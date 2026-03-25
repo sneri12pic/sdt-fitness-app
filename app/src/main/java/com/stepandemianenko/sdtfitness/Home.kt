@@ -1,5 +1,6 @@
-package com.example.fitnessapp.workouts
+package com.stepandemianenko.sdtfitness
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,27 +47,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 //import com.example.fitnessapp.ExerciseActivity
 //import com.example.fitnessapp.ProfileActivity
-import com.stepandemianenko.sdtfitness.R
+
 //import com.example.fitnessapp.SettingsActivity
 
-class homeActivity : ComponentActivity() {
+class Home : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
                 HomeOneScreen(
-                    /*onStartWorkoutClick = {
-                        startActivity(Intent(this, WorkoutSessionActivity::class.java))
+                    onStartWorkoutClick = {
+                        startActivity(Intent(this, StartWorkout::class.java))
                     },
                     onWorkoutClick = {
-                        startActivity(Intent(this, ExerciseActivity::class.java))
+                        startActivity(Intent(this, StartWorkout::class.java))
                     },
-                    onProgressClick = {
+                    /*onProgressClick = {
                         startActivity(Intent(this, ProfileActivity::class.java))
-                    },
+                    },*/
                     onCommunityClick = {
-                        startActivity(Intent(this, SettingsActivity::class.java))
-                    },
+                        startActivity(Intent(this, Community::class.java))
+                    }/*,
                     onProfileClick = {
                         startActivity(Intent(this, ProfileActivity::class.java))
                     }*/
@@ -84,6 +88,10 @@ private val DotGreen = Color(0xFF8ACA8A)
 private val ProgressTrack = Color(0xFFE6B8A5)
 private val BottomBarBg = Color(0xFFF5E5DA)
 private val InactiveIcon = Color(0xFFC48778)
+private val HomeContentMaxWidth = 360.dp
+private const val HomeReservedBottomFraction = 0.15f
+private val HomeHorizontalPadding = 20.dp
+private val HomeTopPadding = 30.dp
 
 @Composable
 fun HomeOneScreen(
@@ -97,69 +105,89 @@ fun HomeOneScreen(
         modifier = Modifier.fillMaxSize(),
         color = AppBackground
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            // Keep scroll content clear of the fixed bottom bar + system nav area.
+            val reservedBottomHeight = maxHeight * HomeReservedBottomFraction
+
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
             ) {
-                HeaderSection()
-                DailyProgressCard()
-                StartWorkoutRow(onStartWorkoutClick)
-                SectionHeader(title = "Today's Plan", action = "Edit")
-                PlanRow(
-                    title = "Gym Session",
-                    subtitle = "Upper Body  •  45 min",
-                    icon = {
-                        CircleIconContainer(iconRes = R.drawable.home_workout_thumb)
-                    },
-                    onClick = onStartWorkoutClick
-                )
-                PlanRow(
-                    title = "Stretch & Mobility",
-                    subtitle = "10 min  •  Post-workout",
-                    icon = {
-                        Image(
-                            painter = painterResource(id = R.drawable.home_icon_stretch),
-                            contentDescription = "Stretch icon",
-                            modifier = Modifier.size(46.dp)
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = HomeContentMaxWidth)
+                        .fillMaxSize()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(
+                                start = HomeHorizontalPadding,
+                                end = HomeHorizontalPadding,
+                                top = HomeTopPadding,
+                                bottom = reservedBottomHeight
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        HeaderSection()
+                        DailyProgressCard()
+                        StartWorkoutRow(onStartWorkoutClick)
+                        SectionHeader(title = "Today's Plan", action = "Edit")
+                        PlanRow(
+                            title = "Gym Session",
+                            subtitle = "Upper Body  •  45 min",
+                            icon = {
+                                CircleIconContainer(iconRes = R.drawable.home_workout_thumb)
+                            },
+                            onClick = onStartWorkoutClick
                         )
-                    },
-                    onClick = onWorkoutClick
+                        PlanRow(
+                            title = "Stretch & Mobility",
+                            subtitle = "10 min  •  Post-workout",
+                            icon = {
+                                Image(
+                                    painter = painterResource(id = R.drawable.home_icon_stretch),
+                                    contentDescription = "Stretch icon",
+                                    modifier = Modifier.size(46.dp)
+                                )
+                            },
+                            onClick = onWorkoutClick
+                        )
+                        SectionHeader(title = "Daily Quest", action = "Optional")
+                        DailyQuestCard()
+                        AddTile(onClick = onWorkoutClick)
+                        SectionHeader(title = "Friends Activity", action = "See all")
+                        FriendsActivityCard()
+                    }
+                }
+                BottomNavigationBar(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    onWorkoutClick = onWorkoutClick,
+                    onProgressClick = onProgressClick,
+                    onCommunityClick = onCommunityClick,
+                    onProfileClick = onProfileClick
                 )
-                SectionHeader(title = "Daily Quest", action = "Optional")
-                DailyQuestCard()
-                AddTile(onClick = onWorkoutClick)
-                SectionHeader(title = "Friends Activity", action = "See all")
-                FriendsActivityCard()
             }
-            BottomNavigationBar(
-                onWorkoutClick = onWorkoutClick,
-                onProgressClick = onProgressClick,
-                onCommunityClick = onCommunityClick,
-                onProfileClick = onProfileClick
-            )
         }
     }
 }
 
 @Composable
 private fun HeaderSection() {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = "Good afternoon",
             color = PrimaryText,
-            fontSize = 22.sp,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.ExtraBold
+            fontSize = 42.sp,
+            lineHeight = 42.sp,
+            fontWeight = FontWeight.Bold
         )
         Text(
             text = "Let's keep the momentum going",
             color = SecondaryText,
-            fontSize = 11.sp,
-            lineHeight = 12.sp
+            fontSize = 16.sp,
+            lineHeight = 18.sp
         )
     }
 }
@@ -177,15 +205,15 @@ private fun DailyProgressCard() {
                 Text(
                     text = "7,532 / 10,000 steps",
                     color = SecondaryText,
-                    fontSize = 11.sp,
-                    lineHeight = 12.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = "2 / 3 workouts",
                     color = SecondaryText,
-                    fontSize = 11.sp,
-                    lineHeight = 12.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -199,8 +227,8 @@ private fun DailyProgressCard() {
                     Text(
                         text = "85 / 120 active min",
                         color = SecondaryText,
-                        fontSize = 11.sp,
-                        lineHeight = 12.sp,
+                        fontSize = 14.sp,
+                        lineHeight = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -238,14 +266,14 @@ private fun GoalProgressRing(progress: Float, modifier: Modifier = Modifier) {
             Text(
                 text = "${(progress * 100).toInt()}%",
                 color = PrimaryText,
-                fontSize = 15.sp,
+                fontSize = 20.sp,
                 lineHeight = 15.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = "Daily Goal",
                 color = SecondaryText,
-                fontSize = 11.sp,
+                fontSize = 13.sp,
                 lineHeight = 11.sp
             )
         }
@@ -266,15 +294,16 @@ private fun StartWorkoutRow(onClick: () -> Unit) {
         Text(
             text = "▶",
             color = Color(0xFFFCE8DA),
-            fontSize = 14.sp,
-            lineHeight = 14.sp
+            fontSize = 17.sp,
+            lineHeight = 17.sp
         )
         Spacer(modifier = Modifier.width(14.dp))
         Text(
             text = "Start Workout",
             color = Color(0xFFFCE8DA),
-            fontSize = 14.sp,
-            lineHeight = 15.sp
+            fontSize = 17.sp,
+            lineHeight = 17.sp,
+            fontWeight = FontWeight.SemiBold
         )
         Spacer(modifier = Modifier.weight(1f))
         Image(
@@ -295,9 +324,9 @@ private fun SectionHeader(title: String, action: String) {
         Text(
             text = title,
             color = PrimaryText,
-            fontSize = 16.sp,
-            lineHeight = 17.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = 18.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.SemiBold
         )
         Text(
             text = action,
@@ -331,14 +360,15 @@ private fun PlanRow(
                 Text(
                     text = title,
                     color = PrimaryText,
-                    fontSize = 15.sp,
-                    lineHeight = 16.sp
+                    fontSize = 18.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = subtitle,
                     color = SecondaryText,
-                    fontSize = 12.sp,
-                    lineHeight = 12.sp
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp
                 )
             }
             Image(
@@ -381,8 +411,9 @@ private fun DailyQuestCard() {
                 Text(
                     text = "Walk 5,000 steps",
                     color = PrimaryText,
-                    fontSize = 15.sp,
-                    lineHeight = 16.sp
+                    fontSize = 18.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Box(
@@ -477,7 +508,7 @@ private fun FriendActivityRow(message: String, badgeIcon: Int, time: String) {
         Text(
             text = message,
             color = PrimaryText,
-            fontSize = 13.sp,
+            fontSize = 14.sp,
             lineHeight = 16.sp,
             modifier = Modifier.weight(1f)
         )
@@ -507,23 +538,33 @@ private fun FriendActivityRow(message: String, badgeIcon: Int, time: String) {
 
 @Composable
 private fun BottomNavigationBar(
+    modifier: Modifier = Modifier,
     onWorkoutClick: () -> Unit,
     onProgressClick: () -> Unit,
     onCommunityClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(BottomBarBg)
             .border(width = 1.dp, color = Color(0x80D6AA98))
+            .navigationBarsPadding()
             .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        BottomNavItem(label = "Home", icon = R.drawable.home_nav_home, textColor = Color(0xFFBF7E65), onClick = {})
+        BottomNavItem(label = "Home", icon = R.drawable.home_nav_home_curr, textColor = Color(0xFFBF7E65), onClick = {})
         BottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout, textColor = InactiveIcon, onClick = onWorkoutClick)
         BottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress, textColor = InactiveIcon, onClick = onProgressClick)
-        BottomNavItem(label = "Community", icon = R.drawable.home_nav_community, textColor = InactiveIcon, onClick = onCommunityClick)
+        BottomNavItem(
+            label = "Community",
+            icon = R.drawable.home_nav_community,
+            textColor = InactiveIcon,
+            iconWidth = 28.dp,
+            iconHeight = 24.dp,
+            iconContentScale = ContentScale.FillBounds,
+            onClick = onCommunityClick
+        )
         BottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = InactiveIcon, onClick = onProfileClick)
     }
 }
@@ -533,6 +574,9 @@ private fun BottomNavItem(
     label: String,
     icon: Int,
     textColor: Color,
+    iconWidth: Dp = 24.dp,
+    iconHeight: Dp = 24.dp,
+    iconContentScale: ContentScale = ContentScale.Fit,
     onClick: () -> Unit
 ) {
     Column(
@@ -545,7 +589,10 @@ private fun BottomNavItem(
         Image(
             painter = painterResource(id = icon),
             contentDescription = label,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier
+                .width(iconWidth)
+                .height(iconHeight),
+            contentScale = iconContentScale
         )
         Text(
             text = label,
@@ -574,7 +621,7 @@ private fun HomeCard(
     }
 }
 
-@Preview(showBackground = true, widthDp = 380, heightDp = 840)
+@Preview(showBackground = true, widthDp = 360, heightDp = 780)
 @Composable
 private fun HomeOneScreenPreview() {
     MaterialTheme {
