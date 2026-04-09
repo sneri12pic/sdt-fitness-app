@@ -77,12 +77,9 @@ class Home : ComponentActivity() {
                     onWorkoutClick = {
                         openStartWorkoutWithoutAnimation()
                     },
-                    /*onProgressClick = {
-                        startActivity(Intent(this, ProfileActivity::class.java))
-                    },*//*,
-                    onProfileClick = {
-                        startActivity(Intent(this, ProfileActivity::class.java))
-                    }*/
+                    onProgressClick = {
+                        openProgressWithoutAnimation()
+                    }
                 )
             }
         }
@@ -90,6 +87,11 @@ class Home : ComponentActivity() {
 
     private fun openStartWorkoutWithoutAnimation() {
         startActivity(Intent(this, StartWorkout::class.java))
+        overridePendingTransition(0, 0)
+    }
+
+    private fun openProgressWithoutAnimation() {
+        startActivity(Intent(this, Progress::class.java))
         overridePendingTransition(0, 0)
     }
 }

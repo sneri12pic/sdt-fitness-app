@@ -12,6 +12,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SDTFitnessApp">
         <activity
+            android:name=".Progress"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.SDTFitnessApp" />
+        <activity
             android:name=".StartWorkout"
             android:exported="false"
             android:label="@string/app_name"

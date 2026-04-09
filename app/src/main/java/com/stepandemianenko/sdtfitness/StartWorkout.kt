@@ -24,11 +24,19 @@ class StartWorkout : ComponentActivity() {
                     onHomeClick = {
                         startActivity(Intent(this, Home::class.java))
                     },
+                    onProgressClick = {
+                        openProgressWithoutAnimation()
+                    },
                     onCommunityClick = {
 
                     }
                 )
             }
         }
+    }
+
+    private fun openProgressWithoutAnimation() {
+        startActivity(Intent(this, Progress::class.java))
+        overridePendingTransition(0, 0)
     }
 }
