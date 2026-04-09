@@ -17,7 +17,7 @@
             android:label="@string/app_name"
             android:theme="@style/Theme.SDTFitnessApp" />
         <activity
-            android:name=".Community"
+            android:name=".OngoingWorkout"
             android:exported="false"
             android:label="@string/app_name"
             android:theme="@style/Theme.SDTFitnessApp" />
