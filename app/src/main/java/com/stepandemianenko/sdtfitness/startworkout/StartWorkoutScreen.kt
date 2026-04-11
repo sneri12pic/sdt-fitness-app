@@ -30,6 +30,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -39,16 +41,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,11 +63,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 //import com.stepandemianenko.sdtfitness.BottomBarBg
 //import com.stepandemianenko.sdtfitness.InactiveIcon
 import com.stepandemianenko.sdtfitness.R
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 private val StartWorkoutBackground = Color(0xFFEBC0B0)
@@ -75,10 +84,22 @@ private val StartWorkoutSuccess = Color(0xFF70C97D)
 private val BottomBarBg = Color(0xFFF7E6DC)
 private val InactiveIcon = Color(0xFFC48778)
 
+private enum class EditableTargetField {
+    Weight,
+    Reps
+}
+
+private data class ExerciseTargetEditorState(
+    val exerciseId: String,
+    val exerciseName: String,
+    val field: EditableTargetField,
+    val currentValue: Int
+)
+
 @Composable
 fun StartWorkoutRoute(
     onBackClick: () -> Unit,
-    onStartWorkoutClick: () -> Unit,
+    onStartWorkoutClick: (Long) -> Unit,
     onShortenSessionClick: () -> Unit,
     onEditWorkoutClick: () -> Unit,
     onExerciseClick: (WorkoutExerciseUiModel) -> Unit,
@@ -92,6 +113,15 @@ fun StartWorkoutRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    var targetEditor by remember { mutableStateOf<ExerciseTargetEditorState?>(null) }
+
+    LaunchedEffect(viewModel) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is StartWorkoutEffect.NavigateToOngoingWorkout -> onStartWorkoutClick(effect.sessionId)
+            }
+        }
+    }
 
     if (uiState.isSelectingExercises) {
         ExercisesScreen(
@@ -119,7 +149,6 @@ fun StartWorkoutRoute(
             },
             onStartWorkoutClick = {
                 viewModel.onEvent(StartWorkoutUiEvent.StartWorkoutClick)
-                onStartWorkoutClick()
             },
             onShortenSessionClick = {
                 viewModel.onEvent(StartWorkoutUiEvent.ShortenSessionClick)
@@ -132,6 +161,22 @@ fun StartWorkoutRoute(
             onExerciseClick = { exercise ->
                 viewModel.onEvent(StartWorkoutUiEvent.ExerciseClick(exercise.id))
                 onExerciseClick(exercise)
+            },
+            onExerciseWeightClick = { exercise ->
+                targetEditor = ExerciseTargetEditorState(
+                    exerciseId = exercise.id,
+                    exerciseName = exercise.name,
+                    field = EditableTargetField.Weight,
+                    currentValue = exercise.targetWeightKg
+                )
+            },
+            onExerciseRepsClick = { exercise ->
+                targetEditor = ExerciseTargetEditorState(
+                    exerciseId = exercise.id,
+                    exerciseName = exercise.name,
+                    field = EditableTargetField.Reps,
+                    currentValue = exercise.targetReps
+                )
             },
             onExerciseCompleteOrSkip = { exercise ->
                 viewModel.onEvent(StartWorkoutUiEvent.CompleteOrSkipExercise(exercise.id))
@@ -161,6 +206,35 @@ fun StartWorkoutRoute(
             onProfileClick = onProfileClick
         )
     }
+
+    targetEditor?.let { editor ->
+        ExerciseTargetInputDialog(
+            state = editor,
+            onDismiss = { targetEditor = null },
+            onSave = { newValue ->
+                when (editor.field) {
+                    EditableTargetField.Weight -> {
+                        viewModel.onEvent(
+                            StartWorkoutUiEvent.UpdateExerciseWeight(
+                                exerciseId = editor.exerciseId,
+                                weightKg = newValue
+                            )
+                        )
+                    }
+
+                    EditableTargetField.Reps -> {
+                        viewModel.onEvent(
+                            StartWorkoutUiEvent.UpdateExerciseReps(
+                                exerciseId = editor.exerciseId,
+                                reps = newValue
+                            )
+                        )
+                    }
+                }
+                targetEditor = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -171,6 +245,8 @@ fun StartWorkoutScreen(
     onShortenSessionClick: () -> Unit,
     onEditWorkoutClick: () -> Unit,
     onExerciseClick: (WorkoutExerciseUiModel) -> Unit,
+    onExerciseWeightClick: (WorkoutExerciseUiModel) -> Unit = {},
+    onExerciseRepsClick: (WorkoutExerciseUiModel) -> Unit = {},
     onExerciseCompleteOrSkip: (WorkoutExerciseUiModel) -> Unit,
     onExerciseDelete: (WorkoutExerciseUiModel) -> Unit,
     onAddExerciseClick: () -> Unit,
@@ -254,6 +330,8 @@ fun StartWorkoutScreen(
                             exercises = plan.exercises,
                             onEditClick = onEditWorkoutClick,
                             onExerciseClick = onExerciseClick,
+                            onExerciseWeightClick = onExerciseWeightClick,
+                            onExerciseRepsClick = onExerciseRepsClick,
                             onExerciseCompleteOrSkip = onExerciseCompleteOrSkip,
                             onExerciseDelete = onExerciseDelete,
                             onAddExerciseClick = onAddExerciseClick
@@ -270,7 +348,8 @@ fun StartWorkoutScreen(
                     item {
                         StartWorkoutPrimaryButton(
                             text = plan.primaryCtaText,
-                            onClick = onStartWorkoutClick
+                            onClick = onStartWorkoutClick,
+                            enabled = !uiState.isStartingWorkout
                         )
                     }
                 }
@@ -402,6 +481,8 @@ private fun SelectedWorkoutCard(
     exercises: List<WorkoutExerciseUiModel>,
     onEditClick: () -> Unit,
     onExerciseClick: (WorkoutExerciseUiModel) -> Unit,
+    onExerciseWeightClick: (WorkoutExerciseUiModel) -> Unit = {},
+    onExerciseRepsClick: (WorkoutExerciseUiModel) -> Unit = {},
     onExerciseCompleteOrSkip: (WorkoutExerciseUiModel) -> Unit,
     onExerciseDelete: (WorkoutExerciseUiModel) -> Unit,
     onAddExerciseClick: () -> Unit,
@@ -466,6 +547,8 @@ private fun SelectedWorkoutCard(
                         exercise = exercise,
                         onClick = { onExerciseClick(exercise) },
                         onEditClick = onEditClick,
+                        onWeightClick = { onExerciseWeightClick(exercise) },
+                        onRepsClick = { onExerciseRepsClick(exercise) },
                         onCompleteOrSkip = { onExerciseCompleteOrSkip(exercise) },
                         onDelete = { onExerciseDelete(exercise) }
                     )
@@ -481,6 +564,8 @@ private fun SwipeableExerciseRow(
     exercise: WorkoutExerciseUiModel,
     onClick: () -> Unit,
     onEditClick: () -> Unit,
+    onWeightClick: () -> Unit,
+    onRepsClick: () -> Unit,
     onCompleteOrSkip: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -514,7 +599,9 @@ private fun SwipeableExerciseRow(
         ExerciseRow(
             exercise = exercise,
             onClick = onClick,
-            onEditClick = onEditClick
+            onEditClick = onEditClick,
+            onWeightClick = onWeightClick,
+            onRepsClick = onRepsClick
         )
     }
 }
@@ -565,6 +652,8 @@ private fun ExerciseRow(
     exercise: WorkoutExerciseUiModel,
     onClick: () -> Unit,
     onEditClick: () -> Unit,
+    onWeightClick: () -> Unit,
+    onRepsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -600,14 +689,28 @@ private fun ExerciseRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            Row(
+                modifier = Modifier.padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                EditableTargetChip(
+                    label = "Weight",
+                    value = "${exercise.targetWeightKg} kg",
+                    onClick = onWeightClick
+                )
+                EditableTargetChip(
+                    label = "Reps",
+                    value = exercise.targetReps.toString(),
+                    onClick = onRepsClick
+                )
+            }
             Text(
                 text = exercise.prescription,
-                style = MaterialTheme.typography.bodyMedium.copy(
+                style = MaterialTheme.typography.bodySmall.copy(
                     color = StartWorkoutSecondaryText,
-                    fontSize = StartWorkoutDimens.SecondaryBodyTextSize
+                    fontSize = StartWorkoutDimens.CaptionTextSize
                 ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                modifier = Modifier.padding(top = 4.dp)
             )
         }
         Spacer(modifier = Modifier.width(4.dp))
@@ -644,6 +747,86 @@ private fun ExerciseRow(
             )
         }
     }
+}
+
+@Composable
+private fun EditableTargetChip(
+    label: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, StartWorkoutDivider, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = "$label: $value",
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = StartWorkoutPrimaryText,
+                fontWeight = FontWeight.Medium,
+                fontSize = StartWorkoutDimens.CaptionTextSize
+            )
+        )
+    }
+}
+
+@Composable
+private fun ExerciseTargetInputDialog(
+    state: ExerciseTargetEditorState,
+    onDismiss: () -> Unit,
+    onSave: (Int) -> Unit
+) {
+    val minimumValue = if (state.field == EditableTargetField.Reps) 1 else 0
+    val fieldLabel = if (state.field == EditableTargetField.Weight) "Weight (kg)" else "Reps"
+    val dialogTitle = if (state.field == EditableTargetField.Weight) {
+        "Set weight for ${state.exerciseName}"
+    } else {
+        "Set reps for ${state.exerciseName}"
+    }
+
+    var input by remember(state) { mutableStateOf(state.currentValue.toString()) }
+    val parsedValue = input.toIntOrNull()
+    val isValid = parsedValue != null && parsedValue >= minimumValue
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = dialogTitle,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    color = StartWorkoutPrimaryText,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { newValue ->
+                    input = newValue.filter { it.isDigit() }
+                },
+                label = { Text(fieldLabel) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(requireNotNull(parsedValue)) },
+                enabled = isValid
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -734,15 +917,16 @@ private fun SecondaryActionCard(
 private fun StartWorkoutPrimaryButton(
     text: String,
     onClick: () -> Unit,
+    enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(StartWorkoutDimens.PrimaryButtonCorner))
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(StartWorkoutDimens.PrimaryButtonCorner),
-        color = StartWorkoutPrimary
+        color = if (enabled) StartWorkoutPrimary else StartWorkoutPrimary.copy(alpha = 0.55f)
     ) {
         Box(
             modifier = Modifier
@@ -851,7 +1035,8 @@ private fun StartWorkoutEmptyState(
                 AddExerciseAction(onClick = onAddExerciseClick)
                 StartWorkoutPrimaryButton(
                     text = "Reload Plan",
-                    onClick = onRetryClick
+                    onClick = onRetryClick,
+                    enabled = true
                 )
             }
         }

@@ -1,12 +1,22 @@
 package com.stepandemianenko.sdtfitness.startworkout
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.stepandemianenko.sdtfitness.data.AppGraph
+import com.stepandemianenko.sdtfitness.data.repository.SessionExerciseDraft
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-class StartWorkoutViewModel : ViewModel() {
+class StartWorkoutViewModel(
+    application: Application
+) : AndroidViewModel(application) {
 
     private data class DeletedExerciseSnapshot(
         val exercise: WorkoutExerciseUiModel,
@@ -15,7 +25,10 @@ class StartWorkoutViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(StartWorkoutFakeStateProvider.loadingState())
     val uiState: StateFlow<StartWorkoutUiState> = _uiState.asStateFlow()
+    private val _effects = MutableSharedFlow<StartWorkoutEffect>(extraBufferCapacity = 1)
+    val effects: SharedFlow<StartWorkoutEffect> = _effects.asSharedFlow()
     private var lastDeletedExercise: DeletedExerciseSnapshot? = null
+    private val workoutSessionRepository = AppGraph.workoutSessionRepository(application)
 
     init {
         _uiState.value = StartWorkoutFakeStateProvider.emptyState()
@@ -32,8 +45,16 @@ class StartWorkoutViewModel : ViewModel() {
             StartWorkoutUiEvent.CloseExercisePickerClick -> closeExercisePicker()
             StartWorkoutUiEvent.ConfirmExerciseSelectionClick -> applyExerciseSelection()
             is StartWorkoutUiEvent.ToggleExerciseSelection -> toggleExerciseSelection(event.exerciseId)
+            is StartWorkoutUiEvent.UpdateExerciseWeight -> updateExerciseTargets(
+                exerciseId = event.exerciseId,
+                weightKg = event.weightKg
+            )
+            is StartWorkoutUiEvent.UpdateExerciseReps -> updateExerciseTargets(
+                exerciseId = event.exerciseId,
+                reps = event.reps
+            )
+            StartWorkoutUiEvent.StartWorkoutClick -> startWorkout()
             StartWorkoutUiEvent.BackClick,
-            StartWorkoutUiEvent.StartWorkoutClick,
             StartWorkoutUiEvent.EditWorkoutClick,
             is StartWorkoutUiEvent.ExerciseClick -> Unit
         }
@@ -83,11 +104,7 @@ class StartWorkoutViewModel : ViewModel() {
                 ?.exercises
                 ?.map { it.id }
                 ?.toSet()
-            val fallbackSelection = if (current.selectedExerciseIds.isEmpty()) {
-                StartWorkoutFakeStateProvider.defaultExerciseSelection()
-            } else {
-                current.selectedExerciseIds
-            }
+            val fallbackSelection = current.selectedExerciseIds
 
             current.copy(
                 isSelectingExercises = true,
@@ -195,5 +212,64 @@ class StartWorkoutViewModel : ViewModel() {
                     name = item.title
                 )
             }
+    }
+
+    private fun updateExerciseTargets(
+        exerciseId: String,
+        weightKg: Int? = null,
+        reps: Int? = null
+    ) {
+        _uiState.update { current ->
+            val plan = current.workoutPlan ?: return@update current
+            val updatedExercises = plan.exercises.map { exercise ->
+                if (exercise.id != exerciseId) return@map exercise
+
+                val updatedWeight = weightKg?.coerceAtLeast(0) ?: exercise.targetWeightKg
+                val updatedReps = reps?.coerceAtLeast(1) ?: exercise.targetReps
+
+                exercise.copy(
+                    prescription = "@ $updatedWeight kg / $updatedReps reps",
+                    targetWeightKg = updatedWeight,
+                    targetReps = updatedReps
+                )
+            }
+
+            current.copy(workoutPlan = plan.copy(exercises = updatedExercises))
+        }
+    }
+
+    private fun startWorkout() {
+        val currentPlan = _uiState.value.workoutPlan ?: return
+        if (currentPlan.exercises.isEmpty()) return
+
+        _uiState.update { it.copy(isStartingWorkout = true) }
+
+        viewModelScope.launch {
+            runCatching {
+                val orderedExercises = currentPlan.exercises.map { exercise ->
+                    SessionExerciseDraft(
+                        exerciseId = exercise.id,
+                        exerciseName = exercise.name,
+                        targetSets = exercise.targetSets,
+                        targetReps = exercise.targetReps,
+                        targetWeightKg = exercise.targetWeightKg
+                    )
+                }
+
+                workoutSessionRepository.startOrResumeSession(
+                    templateId = currentPlan.id,
+                    orderedExercises = orderedExercises
+                )
+            }.onSuccess { result ->
+                _effects.emit(
+                    StartWorkoutEffect.NavigateToOngoingWorkout(
+                        sessionId = result.sessionId,
+                        resumedExisting = result.resumedExisting
+                    )
+                )
+            }
+
+            _uiState.update { it.copy(isStartingWorkout = false) }
+        }
     }
 }

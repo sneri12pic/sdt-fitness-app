@@ -49,13 +49,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 class Progress : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                ProgressScreen(
+                ProgressRoute(
                     onHomeClick = { openHomeWithoutAnimation() },
                     onWorkoutClick = { openWorkoutWithoutAnimation() }
                 )
@@ -92,7 +94,27 @@ private val ProgressTopPadding = 30.dp
 private val ProgressBottomInsetCorner = 16.dp
 
 @Composable
+fun ProgressRoute(
+    onHomeClick: () -> Unit = {},
+    onWorkoutClick: () -> Unit = {},
+    onCommunityClick: () -> Unit = {},
+    onProfileClick: () -> Unit = {},
+    viewModel: ProgressViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    ProgressScreen(
+        uiState = uiState,
+        onHomeClick = onHomeClick,
+        onWorkoutClick = onWorkoutClick,
+        onCommunityClick = onCommunityClick,
+        onProfileClick = onProfileClick
+    )
+}
+
+@Composable
 fun ProgressScreen(
+    uiState: ProgressUiState = ProgressUiState(isLoading = false),
     onHomeClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
     onCommunityClick: () -> Unit = {},
@@ -115,6 +137,7 @@ fun ProgressScreen(
                         .fillMaxSize()
                 ) {
                     ProgressContent(
+                        uiState = uiState,
                         modifier = Modifier
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
@@ -141,6 +164,7 @@ fun ProgressScreen(
 
 @Composable
 private fun ProgressContent(
+    uiState: ProgressUiState,
     modifier: Modifier = Modifier
 ) {
     var showImportedData by rememberSaveable { mutableStateOf(true) }
@@ -150,20 +174,28 @@ private fun ProgressContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         ProgressHeaderSection()
+        if (uiState.isLoading) {
+            Text(
+                text = "Loading completed workout data...",
+                color = ProgressSecondaryText,
+                fontSize = 14.sp,
+                lineHeight = 16.sp
+            )
+        }
         SectionTitle(title = "Consistency")
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ConsistencyCard(
                 modifier = Modifier.weight(1f),
                 iconRes = R.drawable.start_workout_streak_icon,
-                title = "5 Workouts",
-                subtitle = "+1 vs last week",
-                badge = "Manual"
+                title = uiState.consistencyTitle,
+                subtitle = uiState.consistencySubtitle,
+                badge = "Completed"
             )
             ConsistencyCard(
                 modifier = Modifier.weight(1f),
                 iconRes = R.drawable.calendar_streak_consistency,
-                title = "Routine Streak",
-                subtitle = "6-day consistency"
+                title = "${uiState.workoutDays} Workout Days",
+                subtitle = uiState.streakSubtitle
             )
         }
 
@@ -173,24 +205,24 @@ private fun ProgressContent(
                 MasteryCard(
                     modifier = Modifier.weight(1f),
                     title = "Best Lift",
-                    value = "85 kg",
-                    subtitle = "+5 kg this month",
-                    badge = "Manual",
+                    value = uiState.bestLiftValue,
+                    subtitle = uiState.bestLiftSubtitle,
+                    badge = "Completed",
                     iconRes = R.drawable.trophy_star
                 )
                 MasteryCard(
                     modifier = Modifier.weight(1f),
                     title = "Volume",
-                    value = "7,200 kg",
-                    subtitle = "+12% this week",
-                    badge = "Manual",
+                    value = uiState.volumeValue,
+                    subtitle = uiState.volumeSubtitle,
+                    badge = "Completed",
                     iconRes = R.drawable.medal
                 )
             }
             MasteryCard(
-                title = "Personal Bests",
-                value = "3 new records",
-                subtitle = "Bench, squat, row",
+                title = "Session Load",
+                value = uiState.personalBestsValue,
+                subtitle = uiState.personalBestsSubtitle,
                 iconRes = R.drawable.medal
             )
         }
@@ -243,9 +275,12 @@ private fun ProgressContent(
         SectionTitle(title = "Achievements")
         AchievementsCard(
             items = listOf(
-                AchievementItem(R.drawable.trophy_star, "New PR this week"),
-                AchievementItem(R.drawable.calendar_streak_consistency, "6-day routine streak"),
-                AchievementItem(R.drawable.trend, "Volume up 12%")
+                AchievementItem(R.drawable.trophy_star, "${uiState.completedSessions} sessions completed"),
+                AchievementItem(
+                    R.drawable.calendar_streak_consistency,
+                    if (uiState.streakDays > 0) "${uiState.streakDays}-day routine streak" else "Start your first workout streak"
+                ),
+                AchievementItem(R.drawable.trend, "Top volume: ${uiState.topExerciseText}")
             )
         )
     }

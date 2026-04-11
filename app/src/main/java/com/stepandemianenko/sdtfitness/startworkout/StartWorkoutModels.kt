@@ -11,7 +11,8 @@ data class StartWorkoutUiState(
     val isSessionShortened: Boolean = false,
     val isSelectingExercises: Boolean = false,
     val exerciseCatalog: List<ExerciseCatalogItemUiModel> = emptyList(),
-    val selectedExerciseIds: Set<String> = emptySet()
+    val selectedExerciseIds: Set<String> = emptySet(),
+    val isStartingWorkout: Boolean = false
 ) {
     val isEmpty: Boolean
         get() = !isLoading && workoutPlan == null
@@ -41,7 +42,10 @@ data class WorkoutExerciseUiModel(
     val prescription: String,
     val setsText: String,
     val estimatedTimeText: String,
-    @DrawableRes val iconRes: Int
+    @DrawableRes val iconRes: Int,
+    val targetSets: Int = parseTargetSets(setsText),
+    val targetReps: Int = parseTargetReps(prescription),
+    val targetWeightKg: Int = parseTargetWeightKg(prescription)
 )
 
 @Immutable
@@ -83,6 +87,39 @@ sealed interface StartWorkoutUiEvent {
     data object CloseExercisePickerClick : StartWorkoutUiEvent
     data class ToggleExerciseSelection(val exerciseId: String) : StartWorkoutUiEvent
     data object ConfirmExerciseSelectionClick : StartWorkoutUiEvent
+    data class UpdateExerciseWeight(val exerciseId: String, val weightKg: Int) : StartWorkoutUiEvent
+    data class UpdateExerciseReps(val exerciseId: String, val reps: Int) : StartWorkoutUiEvent
+}
+
+sealed interface StartWorkoutEffect {
+    data class NavigateToOngoingWorkout(
+        val sessionId: Long,
+        val resumedExisting: Boolean
+    ) : StartWorkoutEffect
+}
+
+private fun parseTargetSets(setsText: String): Int {
+    return Regex("(\\d+)").find(setsText)?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 3
+}
+
+private fun parseTargetReps(prescription: String): Int {
+    return Regex("(\\d+)\\s*reps", RegexOption.IGNORE_CASE)
+        .find(prescription)
+        ?.groupValues
+        ?.get(1)
+        ?.toIntOrNull()
+        ?.coerceAtLeast(1)
+        ?: 8
+}
+
+private fun parseTargetWeightKg(prescription: String): Int {
+    return Regex("(\\d+)\\s*kg", RegexOption.IGNORE_CASE)
+        .find(prescription)
+        ?.groupValues
+        ?.get(1)
+        ?.toIntOrNull()
+        ?.coerceAtLeast(0)
+        ?: 0
 }
 
 object StartWorkoutFakeStateProvider {
@@ -104,7 +141,7 @@ object StartWorkoutFakeStateProvider {
         workoutPlan = null,
         isSessionShortened = false,
         exerciseCatalog = defaultExerciseCatalog(),
-        selectedExerciseIds = defaultExerciseSelection()
+        selectedExerciseIds = emptySet()
     )
 
     fun shortenedState(): StartWorkoutUiState {

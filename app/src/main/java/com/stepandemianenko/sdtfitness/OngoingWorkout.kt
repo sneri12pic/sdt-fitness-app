@@ -1,5 +1,6 @@
 package com.stepandemianenko.sdtfitness
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,14 +9,34 @@ import androidx.compose.material3.MaterialTheme
 import com.stepandemianenko.sdtfitness.startworkout.OngoingWorkoutRoute
 
 class OngoingWorkout : ComponentActivity() {
+
+    companion object {
+        const val EXTRA_SESSION_ID = "extra_session_id"
+
+        fun createIntent(context: Context, sessionId: Long? = null): Intent {
+            return Intent(context, OngoingWorkout::class.java).apply {
+                if (sessionId != null) {
+                    putExtra(EXTRA_SESSION_ID, sessionId)
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val initialSessionId = intent.getLongExtra(EXTRA_SESSION_ID, -1L).takeIf { it > 0L }
+
         setContent {
             MaterialTheme {
                 OngoingWorkoutRoute(
+                    initialSessionId = initialSessionId,
                     onBackClick = { finish() },
                     onEditClick = { },
                     onLogSetClick = { _, _, _ -> },
+                    onSessionCompleted = {
+                        openProgressWithoutAnimation()
+                        finish()
+                    },
                     onHomeClick = {
                         startActivity(Intent(this, Home::class.java))
                     },

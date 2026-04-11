@@ -14,8 +14,8 @@ class StartWorkout : ComponentActivity() {
             MaterialTheme {
                 StartWorkoutRoute(
                     onBackClick = { finish() },
-                    onStartWorkoutClick = {
-                        startActivity(Intent(this, OngoingWorkout::class.java))
+                    onStartWorkoutClick = { sessionId ->
+                        startActivity(OngoingWorkout.createIntent(this, sessionId))
                     },
                     onShortenSessionClick = { },
                     onEditWorkoutClick = { },

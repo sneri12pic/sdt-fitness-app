@@ -30,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.R
+import kotlinx.coroutines.flow.collect
 
 private val WorkoutBackground = Color(0xFFF8C6B5)
 private val WorkoutCard = Color(0xFFF7E6DC)
@@ -60,9 +62,11 @@ private val WorkoutInactiveIcon = Color(0xFFC48778)
 
 @Composable
 fun OngoingWorkoutRoute(
+    initialSessionId: Long?,
     onBackClick: () -> Unit,
     onEditClick: () -> Unit,
     onLogSetClick: (weightKg: Int, reps: Int, rpeIndex: Int) -> Unit,
+    onSessionCompleted: (Long) -> Unit = {},
     onHomeClick: () -> Unit,
     onCommunityClick: () -> Unit,
     onProgressClick: () -> Unit = {},
@@ -70,6 +74,18 @@ fun OngoingWorkoutRoute(
     viewModel: OngoingWorkoutViewModel = viewModel()
 ) {
     val uiState = viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(initialSessionId) {
+        viewModel.attachSession(initialSessionId)
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is OngoingWorkoutEffect.NavigateToProgress -> onSessionCompleted(effect.sessionId)
+            }
+        }
+    }
 
     OngoingWorkoutScreen(
         uiState = uiState.value,
@@ -89,12 +105,14 @@ fun OngoingWorkoutRoute(
         onRepsPresetClick = { viewModel.onEvent(OngoingWorkoutUiEvent.RepsPresetClick(it)) },
         onRpeSelectClick = { viewModel.onEvent(OngoingWorkoutUiEvent.RpeSelectClick(it)) },
         onLogSetClick = {
-            viewModel.onEvent(OngoingWorkoutUiEvent.LogSetClick)
-            onLogSetClick(
-                uiState.value.loggedWeightKg,
-                uiState.value.loggedReps,
-                uiState.value.selectedRpeIndex
-            )
+            if (uiState.value.hasActiveSession) {
+                viewModel.onEvent(OngoingWorkoutUiEvent.LogSetClick)
+                onLogSetClick(
+                    uiState.value.loggedWeightKg,
+                    uiState.value.loggedReps,
+                    uiState.value.selectedRpeIndex
+                )
+            }
         },
         onHomeClick = onHomeClick,
         onCommunityClick = onCommunityClick,
@@ -153,61 +171,80 @@ fun OngoingWorkoutScreen(
                 onEditClick = onEditClick
             )
 
-            TargetCard(
-                targetText = "${uiState.targetReps} reps @ ${uiState.targetWeightKg} KG",
-                guidance = "You are right\nwhere you need to be."
-            )
+            if (uiState.isLoading) {
+                StatusMessageCard(
+                    text = "Loading active workout..."
+                )
+            } else if (!uiState.hasActiveSession) {
+                StatusMessageCard(
+                    text = uiState.completionMessage ?: "No active workout session. Start one from Start Workout."
+                )
+            } else {
+                TargetCard(
+                    targetText = "${uiState.targetReps} reps @ ${uiState.targetWeightKg} KG",
+                    guidance = uiState.exercisePositionText
+                )
 
-            LogSetSection(
-                weight = uiState.loggedWeightKg,
-                reps = uiState.loggedReps,
-                weightOptions = uiState.weightPresets,
-                repsOptions = uiState.repsPresets,
-                onWeightMinus = onWeightMinusClick,
-                onWeightPlus = onWeightPlusClick,
-                onRepsMinus = onRepsMinusClick,
-                onRepsPlus = onRepsPlusClick,
-                onWeightOptionClick = onWeightPresetClick,
-                onRepsOptionClick = onRepsPresetClick
-            )
+                uiState.transitionMessage?.let { message ->
+                    StatusMessageCard(text = message)
+                }
 
-            RpeSection(
-                options = uiState.rpeOptions,
-                selectedIndex = uiState.selectedRpeIndex,
-                onOptionClick = onRpeSelectClick
-            )
+                LogSetSection(
+                    weight = uiState.loggedWeightKg,
+                    reps = uiState.loggedReps,
+                    weightOptions = uiState.weightPresets,
+                    repsOptions = uiState.repsPresets,
+                    onWeightMinus = onWeightMinusClick,
+                    onWeightPlus = onWeightPlusClick,
+                    onRepsMinus = onRepsMinusClick,
+                    onRepsPlus = onRepsPlusClick,
+                    onWeightOptionClick = onWeightPresetClick,
+                    onRepsOptionClick = onRepsPresetClick
+                )
 
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable(onClick = onLogSetClick),
-                color = WorkoutPrimary,
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(
-                    text = "Log Set",
-                    color = Color.White,
-                    fontSize = 19.sp,
-                    lineHeight = 21.sp,
-                    textAlign = TextAlign.Center,
+                RpeSection(
+                    options = uiState.rpeOptions,
+                    selectedIndex = uiState.selectedRpeIndex,
+                    onOptionClick = onRpeSelectClick
+                )
+
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 10.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onLogSetClick),
+                    color = WorkoutPrimary,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "Log Set",
+                        color = Color.White,
+                        fontSize = 19.sp,
+                        lineHeight = 21.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp)
+                    )
+                }
+
+                PreviousResultsCard(
+                    lastSession = uiState.previousResults.lastSession,
+                    personalBest = uiState.previousResults.personalBest,
+                    dateLabel = uiState.previousResults.dateLabel
                 )
+
+                SessionProgressCard(
+                    completedSets = uiState.completedSets,
+                    totalSets = uiState.totalSessionSets,
+                    remainingSets = uiState.remainingSets,
+                    estimatedTimeRemaining = uiState.estimatedTimeRemaining
+                )
+
+                uiState.completionMessage?.let { message ->
+                    StatusMessageCard(text = message)
+                }
             }
-
-            PreviousResultsCard(
-                lastSession = uiState.previousResults.lastSession,
-                personalBest = uiState.previousResults.personalBest,
-                dateLabel = uiState.previousResults.dateLabel
-            )
-
-            SessionProgressCard(
-                completedSets = uiState.completedSets,
-                totalSets = uiState.totalSets,
-                estimatedTimeRemaining = uiState.estimatedTimeRemaining
-            )
 
             Spacer(modifier = Modifier.height(4.dp))
         }
@@ -333,10 +370,31 @@ private fun TargetCard(
             Text(
                 text = guidance,
                 color = WorkoutSecondary,
-                fontSize = 16.sp,
-                lineHeight = 20.sp
+                fontSize = 15.sp,
+                lineHeight = 18.sp
             )
         }
+    }
+}
+
+@Composable
+private fun StatusMessageCard(
+    text: String
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 354.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = WorkoutCard
+    ) {
+        Text(
+            text = text,
+            color = WorkoutText,
+            fontSize = 15.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+        )
     }
 }
 
@@ -660,19 +718,21 @@ private fun PreviousResultsCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ResultRow(icon = "*", title = "Personal Best", value = personalBest, modifier = Modifier.weight(1f))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFEFD2C4))
-                            .padding(horizontal = 10.dp, vertical = 3.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = dateLabel,
-                            color = WorkoutSecondary,
-                            fontSize = 12.sp,
-                            lineHeight = 15.sp
-                        )
+                    if (dateLabel.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFEFD2C4))
+                                .padding(horizontal = 10.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = dateLabel,
+                                color = WorkoutSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
                     }
                 }
             }
@@ -718,6 +778,7 @@ private fun ResultRow(
 private fun SessionProgressCard(
     completedSets: Int,
     totalSets: Int,
+    remainingSets: Int,
     estimatedTimeRemaining: String
 ) {
     Column(
@@ -749,7 +810,7 @@ private fun SessionProgressCard(
                 SetProgressLine(completedSets = completedSets, totalSets = totalSets)
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Estimated time remaining $estimatedTimeRemaining",
+                    text = "Estimated remaining: $remainingSets sets ($estimatedTimeRemaining)",
                     color = WorkoutText,
                     fontSize = 16.sp,
                     lineHeight = 17.sp
