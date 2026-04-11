@@ -29,12 +29,16 @@ import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,10 +55,19 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.stepandemianenko.sdtfitness.home.DailyGoalSummaryState
+import com.stepandemianenko.sdtfitness.home.DailyQuestState
+import com.stepandemianenko.sdtfitness.home.HomeUiEvent
+import com.stepandemianenko.sdtfitness.home.HomeUiState
+import com.stepandemianenko.sdtfitness.home.HomeViewModel
+import com.stepandemianenko.sdtfitness.home.calculateCurrentStreak
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -70,7 +83,7 @@ class Home : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                HomeOneScreen(
+                HomeRoute(
                     onStartWorkoutClick = {
                         openStartWorkoutWithoutAnimation()
                     },
@@ -121,7 +134,43 @@ private enum class HomeScreen {
 }
 
 @Composable
+fun HomeRoute(
+    onStartWorkoutClick: () -> Unit = {},
+    onWorkoutClick: () -> Unit = {},
+    onProgressClick: () -> Unit = {},
+    onCommunityClick: () -> Unit = {},
+    onProfileClick: () -> Unit = {},
+    viewModel: HomeViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    HomeOneScreen(
+        uiState = uiState,
+        onOpenDailyQuestEditor = { viewModel.onEvent(HomeUiEvent.OpenDailyQuestEditor) },
+        onDismissDailyQuestEditor = { viewModel.onEvent(HomeUiEvent.DismissDailyQuestEditor) },
+        onDailyQuestTargetInputChanged = { viewModel.onEvent(HomeUiEvent.DailyQuestTargetInputChanged(it)) },
+        onDailyQuestCurrentInputChanged = { viewModel.onEvent(HomeUiEvent.DailyQuestCurrentInputChanged(it)) },
+        onSaveDailyQuestEditor = { viewModel.onEvent(HomeUiEvent.SaveDailyQuestEditor) },
+        onPreviousRoutineMonth = { viewModel.onEvent(HomeUiEvent.PreviousRoutineMonth) },
+        onNextRoutineMonth = { viewModel.onEvent(HomeUiEvent.NextRoutineMonth) },
+        onStartWorkoutClick = onStartWorkoutClick,
+        onWorkoutClick = onWorkoutClick,
+        onProgressClick = onProgressClick,
+        onCommunityClick = onCommunityClick,
+        onProfileClick = onProfileClick
+    )
+}
+
+@Composable
 fun HomeOneScreen(
+    uiState: HomeUiState = HomeUiState(),
+    onOpenDailyQuestEditor: () -> Unit = {},
+    onDismissDailyQuestEditor: () -> Unit = {},
+    onDailyQuestTargetInputChanged: (String) -> Unit = {},
+    onDailyQuestCurrentInputChanged: (String) -> Unit = {},
+    onSaveDailyQuestEditor: () -> Unit = {},
+    onPreviousRoutineMonth: () -> Unit = {},
+    onNextRoutineMonth: () -> Unit = {},
     onStartWorkoutClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
@@ -165,9 +214,13 @@ fun HomeOneScreen(
                     ) {
                         when (activeScreen) {
                             HomeScreen.Dashboard -> DashboardContent(
+                                uiState = uiState,
                                 onStartWorkoutClick = onStartWorkoutClick,
                                 onWorkoutClick = onWorkoutClick,
                                 onOpenRestDayDetails = { activeScreen = HomeScreen.RestDayDetails },
+                                onOpenDailyQuestEditor = onOpenDailyQuestEditor,
+                                onPreviousRoutineMonth = onPreviousRoutineMonth,
+                                onNextRoutineMonth = onNextRoutineMonth,
                                 healthConnectLastUpdatedMillis = healthConnectLastUpdatedMillis,
                                 onSyncHealthConnectClick = {
                                     healthConnectLastUpdatedMillis = System.currentTimeMillis()
@@ -188,15 +241,30 @@ fun HomeOneScreen(
                     onProfileClick = onProfileClick
                 )
             }
+
+            if (uiState.isDailyQuestEditorOpen) {
+                DailyQuestEditorDialog(
+                    targetStepsValue = uiState.draftTargetSteps,
+                    currentStepsValue = uiState.draftCurrentSteps,
+                    onTargetStepsChanged = onDailyQuestTargetInputChanged,
+                    onCurrentStepsChanged = onDailyQuestCurrentInputChanged,
+                    onDismiss = onDismissDailyQuestEditor,
+                    onSave = onSaveDailyQuestEditor
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun DashboardContent(
+    uiState: HomeUiState,
     onStartWorkoutClick: () -> Unit,
     onWorkoutClick: () -> Unit,
     onOpenRestDayDetails: () -> Unit,
+    onOpenDailyQuestEditor: () -> Unit,
+    onPreviousRoutineMonth: () -> Unit,
+    onNextRoutineMonth: () -> Unit,
     healthConnectLastUpdatedMillis: Long?,
     onSyncHealthConnectClick: () -> Unit
 ) {
@@ -204,7 +272,7 @@ private fun DashboardContent(
         healthConnectLastUpdatedMillis = healthConnectLastUpdatedMillis,
         onSyncHealthConnectClick = onSyncHealthConnectClick
     )
-    DailyProgressCard()
+    DailyProgressCard(summary = uiState.dashboard.dailyGoalSummary)
     StartWorkoutRow(onStartWorkoutClick)
 
     SectionHeader(title = "Today's Plan", action = "Edit")
@@ -233,10 +301,19 @@ private fun DashboardContent(
         onClick = onOpenRestDayDetails
     )
     SectionHeader(title = "Daily Quest", action = "Optional")
-    DailyQuestCard()
+    DailyQuestCard(
+        questState = uiState.dashboard.dailyQuest,
+        onEditClick = onOpenDailyQuestEditor
+    )
     AddTile(onClick = onWorkoutClick)
     SectionHeader(title = "Routine")
-    RoutineCard(onClick = {})
+    RoutineCard(
+        visibleMonth = uiState.visibleRoutineMonth,
+        streakDates = uiState.dashboard.routineStreakDates,
+        onPreviousMonth = onPreviousRoutineMonth,
+        onNextMonth = onNextRoutineMonth,
+        onClick = {}
+    )
 }
 
 @Composable
@@ -428,24 +505,26 @@ private fun formatUpdatedAgoText(lastUpdatedMillis: Long): String {
 }
 
 @Composable
-private fun DailyProgressCard() {
+private fun DailyProgressCard(
+    summary: DailyGoalSummaryState
+) {
     HomeCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             GoalProgressRing(
-                progress = 0.68f,
+                progress = summary.overallProgress,
                 modifier = Modifier.size(92.dp)
             )
             Spacer(modifier = Modifier.width(18.dp))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = "7,532 / 10,000 steps",
+                    text = "${formatCount(summary.stepsCurrent)} / ${formatCount(summary.stepsTarget)} steps",
                     color = SecondaryText,
                     fontSize = 14.sp,
                     lineHeight = 16.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "2 / 3 workouts",
+                    text = "${summary.workoutsCompletedCapped} / ${summary.workoutsTarget} workouts",
                     color = SecondaryText,
                     fontSize = 14.sp,
                     lineHeight = 16.sp,
@@ -460,7 +539,7 @@ private fun DailyProgressCard() {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "85 / 120 active min",
+                        text = "${summary.activeMinutesCurrent} / ${summary.activeMinutesTarget} active min",
                         color = SecondaryText,
                         fontSize = 14.sp,
                         lineHeight = 16.sp,
@@ -636,8 +715,15 @@ private fun CircleIconContainer(iconRes: Int) {
 }
 
 @Composable
-private fun DailyQuestCard() {
-    HomeCard(horizontalPadding = 10.dp, verticalPadding = 10.dp) {
+private fun DailyQuestCard(
+    questState: DailyQuestState,
+    onEditClick: () -> Unit
+) {
+    HomeCard(
+        modifier = Modifier.clickable(onClick = onEditClick),
+        horizontalPadding = 10.dp,
+        verticalPadding = 10.dp
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -646,11 +732,18 @@ private fun DailyQuestCard() {
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Walk 5,000 steps",
+                    text = "Walk ${formatCount(questState.targetSteps)} steps",
                     color = PrimaryText,
                     fontSize = 18.sp,
                     lineHeight = 18.sp,
                     fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "${formatCount(questState.currentSteps)} / ${formatCount(questState.targetSteps)}",
+                    color = SecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Box(
@@ -662,7 +755,7 @@ private fun DailyQuestCard() {
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.7f)
+                            .fillMaxWidth(questState.progress)
                             .height(6.dp)
                             .background(SoftGreen)
                     )
@@ -677,7 +770,7 @@ private fun DailyQuestCard() {
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "+ 50 xp",
+                        text = if (questState.isManual) "Manual" else "Imported",
                         color = PrimaryText,
                         fontSize = 11.sp,
                         lineHeight = 11.sp
@@ -686,12 +779,65 @@ private fun DailyQuestCard() {
                 Spacer(modifier = Modifier.height(8.dp))
                 Image(
                     painter = painterResource(id = R.drawable.home_icon_chevron),
-                    contentDescription = "Open quest",
+                    contentDescription = "Edit daily quest",
                     modifier = Modifier.size(12.dp)
                 )
             }
         }
     }
+}
+
+private fun formatCount(value: Int): String {
+    return "%,d".format(value.coerceAtLeast(0))
+}
+
+@Composable
+private fun DailyQuestEditorDialog(
+    targetStepsValue: String,
+    currentStepsValue: String,
+    onTargetStepsChanged: (String) -> Unit,
+    onCurrentStepsChanged: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Daily Quest Steps",
+                color = PrimaryText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = targetStepsValue,
+                    onValueChange = onTargetStepsChanged,
+                    label = { Text("Target steps") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                OutlinedTextField(
+                    value = currentStepsValue,
+                    onValueChange = onCurrentStepsChanged,
+                    label = { Text("Current steps") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onSave) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -719,16 +865,18 @@ private fun AddTile(onClick: () -> Unit) {
 }
 
 @Composable
-private fun RoutineCard(onClick: () -> Unit) {
-    var visibleMonth by remember { mutableStateOf(YearMonth.of(2026, 4)) }
+private fun RoutineCard(
+    visibleMonth: YearMonth,
+    streakDates: Set<LocalDate>,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onClick: () -> Unit
+) {
     val today = remember { LocalDate.now() }
-    val streakDates = remember {
-        (1..6).map { day -> LocalDate.of(2026, 4, day) }.toSet()
-    }
     val calendarDays = remember(visibleMonth, streakDates, today) {
         buildCalendarDays(visibleMonth, streakDates, today)
     }
-    val streakCount = streakDates.size
+    val streakCount = calculateCurrentStreak(streakDates, today)
 
     HomeCard(
         modifier = Modifier.clickable(onClick = onClick),
@@ -771,14 +919,14 @@ private fun RoutineCard(onClick: () -> Unit) {
                         contentDescription = "Previous month",
                         modifier = Modifier
                             .size(width = 22.dp, height = 19.dp)
-                            .clickable { visibleMonth = visibleMonth.minusMonths(1) }
+                            .clickable(onClick = onPreviousMonth)
                     )
                     Image(
                         painter = painterResource(id = R.drawable.home_calendar_next),
                         contentDescription = "Next month",
                         modifier = Modifier
                             .size(width = 22.dp, height = 19.dp)
-                            .clickable { visibleMonth = visibleMonth.plusMonths(1) }
+                            .clickable(onClick = onNextMonth)
                     )
                 }
             }

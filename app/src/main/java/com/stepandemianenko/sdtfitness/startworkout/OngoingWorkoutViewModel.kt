@@ -7,6 +7,7 @@ import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionStatus
 import com.stepandemianenko.sdtfitness.data.repository.ActiveWorkoutSnapshot
 import com.stepandemianenko.sdtfitness.data.repository.LogSetOutcome
+import com.stepandemianenko.sdtfitness.home.HomeRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,7 @@ class OngoingWorkoutViewModel(
 ) : AndroidViewModel(application) {
 
     private val repository = AppGraph.workoutSessionRepository(application)
+    private val homeRepository = HomeRepository.getInstance(application)
 
     private val _uiState = MutableStateFlow(OngoingWorkoutUiState())
     val uiState: StateFlow<OngoingWorkoutUiState> = _uiState.asStateFlow()
@@ -163,6 +165,7 @@ class OngoingWorkoutViewModel(
                             completionMessage = "Workout complete. Great consistency."
                         )
                     }
+                    homeRepository.setTodayWorkoutCompleted(completed = true)
                     _effects.emit(OngoingWorkoutEffect.NavigateToProgress(outcome.sessionId))
                 }
 
