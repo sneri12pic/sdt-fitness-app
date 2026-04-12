@@ -36,6 +36,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,7 +77,8 @@ import com.stepandemianenko.sdtfitness.home.HomeUiEvent
 import com.stepandemianenko.sdtfitness.home.HomeUiState
 import com.stepandemianenko.sdtfitness.home.HomeViewModel
 import com.stepandemianenko.sdtfitness.home.RecoveryOption
-import com.stepandemianenko.sdtfitness.home.RestDayUiState
+import com.stepandemianenko.sdtfitness.quicklog.QuickLogRoute
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -137,7 +141,8 @@ private val CalendarMonthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Lo
 
 private enum class HomeScreen {
     Dashboard,
-    RestDayDetails
+    RestDayDetails,
+    QuickLogDetails
 }
 
 @Composable
@@ -157,7 +162,6 @@ fun HomeRoute(
         onDailyQuestTargetInputChanged = { viewModel.onEvent(HomeUiEvent.DailyQuestTargetInputChanged(it)) },
         onDailyQuestCurrentInputChanged = { viewModel.onEvent(HomeUiEvent.DailyQuestCurrentInputChanged(it)) },
         onSaveDailyQuestEditor = { viewModel.onEvent(HomeUiEvent.SaveDailyQuestEditor) },
-        onRecoveryOptionSelected = { viewModel.onEvent(HomeUiEvent.SelectRecoveryOption(it)) },
         onSaveRecoveryOption = { viewModel.onEvent(HomeUiEvent.SaveRecoveryOption(it)) },
         onPreviousRoutineMonth = { viewModel.onEvent(HomeUiEvent.PreviousRoutineMonth) },
         onNextRoutineMonth = { viewModel.onEvent(HomeUiEvent.NextRoutineMonth) },
@@ -177,7 +181,6 @@ fun HomeOneScreen(
     onDailyQuestTargetInputChanged: (String) -> Unit = {},
     onDailyQuestCurrentInputChanged: (String) -> Unit = {},
     onSaveDailyQuestEditor: () -> Unit = {},
-    onRecoveryOptionSelected: (RecoveryOption) -> Unit = {},
     onSaveRecoveryOption: (RecoveryOption) -> Unit = {},
     onPreviousRoutineMonth: () -> Unit = {},
     onNextRoutineMonth: () -> Unit = {},
@@ -187,6 +190,9 @@ fun HomeOneScreen(
     onProfileClick: () -> Unit = {},
     onSyncHealthConnectClick: () -> Unit = {}
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = AppBackground
@@ -196,7 +202,7 @@ fun HomeOneScreen(
             val reservedBottomHeight = maxHeight * HomeReservedBottomFraction
             var activeScreen by rememberSaveable { mutableStateOf(HomeScreen.Dashboard) }
 
-            BackHandler(enabled = activeScreen == HomeScreen.RestDayDetails) {
+            BackHandler(enabled = activeScreen != HomeScreen.Dashboard) {
                 activeScreen = HomeScreen.Dashboard
             }
 
@@ -226,6 +232,7 @@ fun HomeOneScreen(
                                 uiState = uiState,
                                 onStartWorkoutClick = onStartWorkoutClick,
                                 onWorkoutClick = onWorkoutClick,
+                                onOpenQuickLogDetails = { activeScreen = HomeScreen.QuickLogDetails },
                                 onOpenRestDayDetails = { activeScreen = HomeScreen.RestDayDetails },
                                 onOpenDailyQuestEditor = onOpenDailyQuestEditor,
                                 onPreviousRoutineMonth = onPreviousRoutineMonth,
@@ -235,14 +242,25 @@ fun HomeOneScreen(
                             )
 
                             HomeScreen.RestDayDetails -> RestDayDetailsContent(
-                                restDayState = uiState.dashboard.restDay,
-                                onRecoveryOptionSelected = onRecoveryOptionSelected,
-                                onSaveSelectedRecovery = { selectedOption ->
-                                    onSaveRecoveryOption(selectedOption)
+                                onSaveRestDay = {
+                                    onSaveRecoveryOption(RecoveryOption.REST_DAY)
                                     activeScreen = HomeScreen.Dashboard
                                 },
+                                onBackClick = { activeScreen = HomeScreen.Dashboard }
+                            )
+
+                            HomeScreen.QuickLogDetails -> QuickLogRoute(
                                 onBackClick = { activeScreen = HomeScreen.Dashboard },
-                                onSeeWeeklyPatternClick = onProgressClick
+                                onQuickLogSaved = { message ->
+                                    activeScreen = HomeScreen.Dashboard
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(message = message)
+                                    }
+                                },
+                                cardColor = CardBackground,
+                                accentColor = ActionColor,
+                                primaryTextColor = PrimaryText,
+                                secondaryTextColor = SecondaryText
                             )
                         }
                     }
@@ -252,6 +270,19 @@ fun HomeOneScreen(
                     onWorkoutClick = onWorkoutClick,
                     onProgressClick = onProgressClick,
                     onProfileClick = onProfileClick
+                )
+
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .widthIn(max = HomeContentMaxWidth)
+                        .padding(
+                            start = HomeHorizontalPadding,
+                            end = HomeHorizontalPadding,
+                            bottom = reservedBottomHeight + 8.dp
+                        )
                 )
             }
 
@@ -274,6 +305,7 @@ private fun DashboardContent(
     uiState: HomeUiState,
     onStartWorkoutClick: () -> Unit,
     onWorkoutClick: () -> Unit,
+    onOpenQuickLogDetails: () -> Unit,
     onOpenRestDayDetails: () -> Unit,
     onOpenDailyQuestEditor: () -> Unit,
     onPreviousRoutineMonth: () -> Unit,
@@ -299,15 +331,15 @@ private fun DashboardContent(
     )
     PlanRow(
         title = "Quick Log",
-        subtitle = "•  Log a light activity",
+        subtitle = "Log a small activity or update your day",
         icon = {
             CircleIconContainer(iconRes = R.drawable.quick_log)
         },
-        onClick = onWorkoutClick
+        onClick = onOpenQuickLogDetails
     )
     PlanRow(
         title = "Rest Day",
-        subtitle = "Skip today with a note",
+        subtitle = "Mark today as a recovery day",
         icon = {
             CircleIconContainer(iconRes = R.drawable.recovery)
         },
@@ -331,13 +363,9 @@ private fun DashboardContent(
 
 @Composable
 private fun RestDayDetailsContent(
-    restDayState: RestDayUiState,
-    onRecoveryOptionSelected: (RecoveryOption) -> Unit,
-    onSaveSelectedRecovery: (RecoveryOption) -> Unit,
-    onBackClick: () -> Unit,
-    onSeeWeeklyPatternClick: () -> Unit
+    onSaveRestDay: () -> Unit,
+    onBackClick: () -> Unit
 ) {
-    val selectedOption = restDayState.selectedOption
     val optionSpacing = dimensionResource(id = R.dimen.rest_day_option_spacing)
 
     Row(
@@ -365,76 +393,38 @@ private fun RestDayDetailsContent(
 
     Column(verticalArrangement = Arrangement.spacedBy(optionSpacing)) {
         RestDayHeroCard()
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = stringResource(id = R.string.rest_day_recovery_title),
-                color = PrimaryText,
-                fontSize = 22.sp,
-                lineHeight = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = stringResource(id = R.string.rest_day_recovery_subtitle),
-                color = SecondaryText,
-                fontSize = 14.sp,
-                lineHeight = 18.sp
-            )
-        }
+        HomeCard {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(id = R.string.rest_day_recovery_title),
+                        color = PrimaryText,
+                        fontSize = 22.sp,
+                        lineHeight = 24.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = stringResource(id = R.string.rest_day_recovery_subtitle),
+                        color = SecondaryText,
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    )
+                }
 
-        RecoveryOptionCard(
-            title = stringResource(id = R.string.rest_day_option_log_rest_title),
-            description = stringResource(id = R.string.rest_day_option_log_rest_description),
-            isSelected = selectedOption == RecoveryOption.REST_DAY,
-            onClick = { onRecoveryOptionSelected(RecoveryOption.REST_DAY) }
-        )
+                RestDayPrimaryAction(
+                    label = stringResource(id = R.string.rest_day_save_rest_day),
+                    onClick = onSaveRestDay
+                )
 
-        RecoveryOptionCard(
-            title = stringResource(id = R.string.rest_day_option_short_check_title),
-            description = stringResource(id = R.string.rest_day_option_short_check_description),
-            isSelected = selectedOption == RecoveryOption.SHORT_CHECK_IN,
-            onClick = { onRecoveryOptionSelected(RecoveryOption.SHORT_CHECK_IN) },
-            supportingChips = listOf(
-                stringResource(id = R.string.rest_day_chip_mobility),
-                stringResource(id = R.string.rest_day_chip_walk),
-                stringResource(id = R.string.rest_day_chip_note)
-            )
-        )
-
-        RestDayPrimaryAction(
-            label = if (selectedOption == RecoveryOption.REST_DAY) {
-                stringResource(id = R.string.rest_day_save_rest_day)
-            } else {
-                stringResource(id = R.string.rest_day_save_check_in)
-            },
-            onClick = { onSaveSelectedRecovery(selectedOption) }
-        )
-
-        Text(
-            text = stringResource(id = R.string.rest_day_helper_text),
-            color = SecondaryText,
-            fontSize = 13.sp,
-            lineHeight = 16.sp,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-
-        Button(
-            onClick = onSeeWeeklyPatternClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(dimensionResource(id = R.dimen.rest_day_secondary_button_height)),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = CardBackground,
-                contentColor = SecondaryText
-            )
-        ) {
-            Text(
-                text = stringResource(id = R.string.rest_day_secondary_action),
-                fontSize = 14.sp,
-                lineHeight = 14.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+                Text(
+                    text = stringResource(id = R.string.rest_day_helper_text),
+                    color = SecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -1336,11 +1326,8 @@ private fun HomeOneScreenPreview() {
 private fun RestDayDetailsPreview() {
     MaterialTheme {
         RestDayDetailsContent(
-            restDayState = RestDayUiState(),
-            onRecoveryOptionSelected = {},
-            onSaveSelectedRecovery = {},
-            onBackClick = {},
-            onSeeWeeklyPatternClick = {}
+            onSaveRestDay = {},
+            onBackClick = {}
         )
     }
 }

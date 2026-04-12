@@ -1041,10 +1041,9 @@ private fun StartWorkoutEmptyState(
                         fontSize = StartWorkoutDimens.BodyTextSize
                     )
                 )
-                AddExerciseAction(onClick = onAddExerciseClick)
                 StartWorkoutPrimaryButton(
-                    text = "Reload Plan",
-                    onClick = onRetryClick,
+                    text = "Add Exercise",
+                    onClick = onAddExerciseClick,
                     enabled = true
                 )
             }
