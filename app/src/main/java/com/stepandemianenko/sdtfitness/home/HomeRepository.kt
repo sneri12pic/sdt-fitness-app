@@ -88,6 +88,31 @@ class HomeRepository private constructor(
         publishUpdatedState()
     }
 
+    fun logTodayQuickActivity(
+        type: QuickLogType,
+        durationMinutes: Int,
+        timestampMillis: Long = System.currentTimeMillis(),
+        source: String = "manual_quick_log"
+    ) {
+        val todayKey = LocalDate.now().toString()
+        val safeDuration = durationMinutes.coerceAtLeast(1)
+        val currentActiveMinutes = prefs.getInt(KEY_ACTIVE_MINUTES_TODAY, 0).coerceAtLeast(0)
+        val updatedActiveMinutes = (currentActiveMinutes + safeDuration)
+            .coerceAtMost(Int.MAX_VALUE)
+
+        prefs.edit()
+            .putString(KEY_QUICK_LOG_DATE, todayKey)
+            .putString(KEY_QUICK_LOG_TYPE, type.name)
+            .putInt(KEY_QUICK_LOG_DURATION_MINUTES, safeDuration)
+            .putLong(KEY_QUICK_LOG_TIMESTAMP, timestampMillis)
+            .putString(KEY_QUICK_LOG_SOURCE, source)
+            .putInt(KEY_ACTIVE_MINUTES_TODAY, updatedActiveMinutes)
+            .apply()
+
+        addRoutineCompletion(todayKey)
+        publishUpdatedState()
+    }
+
     private fun addRoutineCompletion(dateKey: String) {
         val existing = prefs.getStringSet(KEY_ROUTINE_COMPLETED_DATES, emptySet()).orEmpty().toMutableSet()
         existing.add(dateKey)
@@ -133,6 +158,28 @@ class HomeRepository private constructor(
         val savedRecoveryAtMillis = prefs.getLong(KEY_RECOVERY_LOG_AT_MILLIS, 0L).takeIf {
             it > 0L && savedRecoveryDate == todayKey
         }
+        val savedQuickLogDate = prefs.getString(KEY_QUICK_LOG_DATE, null)
+        val savedQuickLogEntry = if (savedQuickLogDate == todayKey) {
+            val type = prefs.getString(KEY_QUICK_LOG_TYPE, null)?.let { name ->
+                runCatching { QuickLogType.valueOf(name) }.getOrNull()
+            }
+            val duration = prefs.getInt(KEY_QUICK_LOG_DURATION_MINUTES, 0).coerceAtLeast(0)
+            val timestamp = prefs.getLong(KEY_QUICK_LOG_TIMESTAMP, 0L)
+            val source = prefs.getString(KEY_QUICK_LOG_SOURCE, "manual_quick_log") ?: "manual_quick_log"
+
+            if (type != null && duration > 0 && timestamp > 0L) {
+                QuickLogEntry(
+                    quickLogType = type,
+                    durationMinutes = duration,
+                    timestamp = timestamp,
+                    source = source
+                )
+            } else {
+                null
+            }
+        } else {
+            null
+        }
 
         return HomeDashboardState(
             dailyQuest = DailyQuestState(
@@ -155,7 +202,8 @@ class HomeRepository private constructor(
                 selectedOption = savedRecoveryOption ?: RecoveryOption.REST_DAY,
                 savedTodayOption = savedRecoveryOption,
                 savedTodayAtMillis = savedRecoveryAtMillis
-            )
+            ),
+            quickLogToday = savedQuickLogEntry
         )
     }
 
@@ -171,6 +219,11 @@ class HomeRepository private constructor(
         private const val KEY_RECOVERY_LOG_DATE = "recovery_log_date"
         private const val KEY_RECOVERY_LOG_OPTION = "recovery_log_option"
         private const val KEY_RECOVERY_LOG_AT_MILLIS = "recovery_log_at_millis"
+        private const val KEY_QUICK_LOG_DATE = "quick_log_date"
+        private const val KEY_QUICK_LOG_TYPE = "quick_log_type"
+        private const val KEY_QUICK_LOG_DURATION_MINUTES = "quick_log_duration_minutes"
+        private const val KEY_QUICK_LOG_TIMESTAMP = "quick_log_timestamp"
+        private const val KEY_QUICK_LOG_SOURCE = "quick_log_source"
 
         private const val DEFAULT_STEPS_TARGET = 5_000
         private const val DEFAULT_ACTIVE_MINUTES_TARGET = 30

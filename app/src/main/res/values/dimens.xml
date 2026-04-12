@@ -10,4 +10,15 @@
     <dimen name="rest_day_chip_vertical_padding">5dp</dimen>
     <dimen name="rest_day_primary_button_height">46dp</dimen>
     <dimen name="rest_day_secondary_button_height">42dp</dimen>
+    <dimen name="quick_log_card_corner_radius">16dp</dimen>
+    <dimen name="quick_log_card_horizontal_padding">16dp</dimen>
+    <dimen name="quick_log_card_vertical_padding">18dp</dimen>
+    <dimen name="quick_log_content_spacing">14dp</dimen>
+    <dimen name="quick_log_option_corner_radius">14dp</dimen>
+    <dimen name="quick_log_option_height">98dp</dimen>
+    <dimen name="quick_log_option_inner_spacing">8dp</dimen>
+    <dimen name="quick_log_chip_corner_radius">16dp</dimen>
+    <dimen name="quick_log_chip_horizontal_padding">12dp</dimen>
+    <dimen name="quick_log_chip_vertical_padding">8dp</dimen>
+    <dimen name="quick_log_primary_button_height">46dp</dimen>
 </resources>

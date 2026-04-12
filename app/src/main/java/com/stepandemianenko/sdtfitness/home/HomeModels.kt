@@ -14,6 +14,19 @@ enum class RecoveryOption {
     SHORT_CHECK_IN
 }
 
+enum class QuickLogType {
+    WALK,
+    MOBILITY,
+    CUSTOM
+}
+
+data class QuickLogEntry(
+    val quickLogType: QuickLogType,
+    val durationMinutes: Int,
+    val timestamp: Long,
+    val source: String = "manual_quick_log"
+)
+
 data class DailyQuestState(
     val sourceType: DailyStepsSourceType = DailyStepsSourceType.MANUAL,
     val targetSteps: Int = 5_000,
@@ -49,7 +62,8 @@ data class HomeDashboardState(
     val dailyQuest: DailyQuestState = DailyQuestState(),
     val dailyGoalSummary: DailyGoalSummaryState = DailyGoalSummaryState(),
     val routineStreakDates: Set<LocalDate> = emptySet(),
-    val restDay: RestDayUiState = RestDayUiState()
+    val restDay: RestDayUiState = RestDayUiState(),
+    val quickLogToday: QuickLogEntry? = null
 ) {
     val currentStreakCount: Int
         get() = calculateCurrentStreak(routineStreakDates, LocalDate.now())
