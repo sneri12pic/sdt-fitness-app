@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="rest_day_hero_height">136dp</dimen>
+    <dimen name="rest_day_option_spacing">10dp</dimen>
+    <dimen name="rest_day_option_corner_radius">12dp</dimen>
+    <dimen name="rest_day_option_vertical_padding">12dp</dimen>
+    <dimen name="rest_day_option_horizontal_padding">14dp</dimen>
+    <dimen name="rest_day_chip_corner_radius">10dp</dimen>
+    <dimen name="rest_day_chip_horizontal_padding">10dp</dimen>
+    <dimen name="rest_day_chip_vertical_padding">5dp</dimen>
+    <dimen name="rest_day_primary_button_height">46dp</dimen>
+    <dimen name="rest_day_secondary_button_height">42dp</dimen>
+</resources>
