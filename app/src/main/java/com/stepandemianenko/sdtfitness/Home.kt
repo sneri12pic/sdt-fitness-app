@@ -145,7 +145,6 @@ fun HomeRoute(
     onStartWorkoutClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
-    onCommunityClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
@@ -165,7 +164,6 @@ fun HomeRoute(
         onStartWorkoutClick = onStartWorkoutClick,
         onWorkoutClick = onWorkoutClick,
         onProgressClick = onProgressClick,
-        onCommunityClick = onCommunityClick,
         onProfileClick = onProfileClick,
         onSyncHealthConnectClick = viewModel::syncHealthConnectSteps
     )
@@ -186,7 +184,6 @@ fun HomeOneScreen(
     onStartWorkoutClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
-    onCommunityClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onSyncHealthConnectClick: () -> Unit = {}
 ) {
@@ -254,7 +251,6 @@ fun HomeOneScreen(
                     modifier = Modifier.align(Alignment.BottomCenter),
                     onWorkoutClick = onWorkoutClick,
                     onProgressClick = onProgressClick,
-                    onCommunityClick = onCommunityClick,
                     onProfileClick = onProfileClick
                 )
             }
@@ -449,16 +445,16 @@ private fun RestDayHeroCard() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(dimensionResource(id = R.dimen.rest_day_hero_height)),
+                .height(dimensionResource(id = R.dimen.rest_day_hero_height))
+                .clip(RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
             Image(
-                painter = painterResource(id = R.drawable.recovery),
+                painter = painterResource(id = R.drawable.sleeping_pillow),
                 contentDescription = stringResource(id = R.string.rest_day_hero_content_description),
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(vertical = 8.dp, horizontal = 14.dp)
             )
         }
     }
@@ -602,8 +598,9 @@ private fun HeaderSection(
     healthConnectLastUpdatedMillis: Long?,
     onSyncHealthConnectClick: () -> Unit
 ) {
-    val updatedText = healthConnectLastUpdatedMillis?.let { formatUpdatedAgoText(it) }
-    val subtitleBlockHeight = 36.dp
+    val syncStatusText = healthConnectLastUpdatedMillis?.let {
+        "Synced from Health Connect - ${formatSyncAgeText(it)}"
+    } ?: "Not synced with Health Connect"
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -627,30 +624,23 @@ private fun HeaderSection(
                     fontSize = 16.sp,
                     lineHeight = 18.sp
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SyncedStatusIcon()
+                Row(verticalAlignment = Alignment.Top) {
+                    SyncedStatusIcon(modifier = Modifier.padding(top = 1.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Synced from Health Connect",
+                        text = syncStatusText,
                         color = SecondaryText,
                         fontSize = 14.sp,
                         lineHeight = 16.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 1.dp)
                     )
-                    if (updatedText != null) {
-                        Text(
-                            text = " • $updatedText",
-                            color = SecondaryText,
-                            fontSize = 12.sp,
-                            lineHeight = 12.sp
-                        )
-                    }
                 }
             }
             Spacer(modifier = Modifier.width(10.dp))
             SyncActionButton(
                 onClick = onSyncHealthConnectClick,
-                modifier = Modifier.height(subtitleBlockHeight)
+                modifier = Modifier.height(34.dp)
             )
         }
     }
@@ -671,26 +661,28 @@ private fun SyncActionButton(
 }
 
 @Composable
-private fun SyncedStatusIcon() {
+private fun SyncedStatusIcon(
+    modifier: Modifier = Modifier
+) {
 
     Image(
         painter = painterResource(id = R.drawable.synched),
         contentDescription = "Sync",
-        modifier = Modifier.size(15.dp)
+        modifier = modifier.size(15.dp)
     )
 
 }
 
-private fun formatUpdatedAgoText(lastUpdatedMillis: Long): String {
+private fun formatSyncAgeText(lastUpdatedMillis: Long): String {
     val elapsedMs = (System.currentTimeMillis() - lastUpdatedMillis).coerceAtLeast(0L)
     val elapsedMinutes = elapsedMs / (60 * 1000)
 
     return when {
-        elapsedMinutes < 1 -> "Updated just now"
-        elapsedMinutes < 60 -> "Updated ${elapsedMinutes} min ago"
-        elapsedMinutes < 120 -> "Updated 1 hour ago"
-        elapsedMinutes < 60 * 24 -> "Updated ${elapsedMinutes / 60} hours ago"
-        else -> "Updated ${(elapsedMinutes / 60) / 24} days ago"
+        elapsedMinutes < 1 -> "Just now"
+        elapsedMinutes < 60 -> "${elapsedMinutes} min ago"
+        elapsedMinutes < 120 -> "1 hour ago"
+        elapsedMinutes < 60 * 24 -> "${elapsedMinutes / 60} hours ago"
+        else -> "${(elapsedMinutes / 60) / 24} days ago"
     }
 }
 
@@ -1245,7 +1237,6 @@ private fun BottomNavigationBar(
     modifier: Modifier = Modifier,
     onWorkoutClick: () -> Unit,
     onProgressClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -1260,15 +1251,6 @@ private fun BottomNavigationBar(
             BottomNavItem(label = "Home", icon = R.drawable.home_nav_home_curr, textColor = Color(0xFFBF7E65), onClick = {})
             BottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout, textColor = InactiveIcon, onClick = onWorkoutClick)
             BottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress, textColor = InactiveIcon, onClick = onProgressClick)
-            BottomNavItem(
-                label = "Community",
-                icon = R.drawable.home_nav_community,
-                textColor = InactiveIcon,
-                iconWidth = 28.dp,
-                iconHeight = 24.dp,
-                iconContentScale = ContentScale.FillBounds,
-                onClick = onCommunityClick
-            )
             BottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = InactiveIcon, onClick = onProfileClick)
         }
 

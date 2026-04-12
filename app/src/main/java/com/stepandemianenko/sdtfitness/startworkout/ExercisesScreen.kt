@@ -72,7 +72,6 @@ fun ExercisesScreen(
     onExerciseToggle: (String) -> Unit,
     onAddSelectedClick: () -> Unit,
     onHomeClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -101,7 +100,6 @@ fun ExercisesScreen(
         bottomBar = {
             ExercisesBottomNavigationBar(
                 onHomeClick = onHomeClick,
-                onCommunityClick = onCommunityClick,
                 onProgressClick = onProgressClick,
                 onProfileClick = onProfileClick
             )
@@ -424,7 +422,6 @@ private fun ExercisesBottomNavigationBar(
     modifier: Modifier = Modifier,
     onHomeClick: () -> Unit,
     onProgressClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -453,15 +450,6 @@ private fun ExercisesBottomNavigationBar(
                 icon = R.drawable.home_nav_progress,
                 textColor = ExercisesInactiveIcon,
                 onClick = onProgressClick
-            )
-            ExercisesBottomNavItem(
-                label = "Community",
-                icon = R.drawable.home_nav_community,
-                textColor = ExercisesInactiveIcon,
-                iconWidth = 28.dp,
-                iconHeight = 24.dp,
-                iconContentScale = ContentScale.FillBounds,
-                onClick = onCommunityClick
             )
             ExercisesBottomNavItem(
                 label = "Profile",
@@ -528,7 +516,6 @@ private fun ExercisesScreenPreview() {
             onExerciseToggle = {},
             onAddSelectedClick = {},
             onHomeClick = {},
-            onCommunityClick = {},
             onProgressClick = {},
             onProfileClick = {}
         )

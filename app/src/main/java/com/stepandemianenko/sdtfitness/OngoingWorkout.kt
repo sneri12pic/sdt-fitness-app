@@ -42,8 +42,6 @@ class OngoingWorkout : ComponentActivity() {
                     },
                     onProgressClick = {
                         openProgressWithoutAnimation()
-                    },
-                    onCommunityClick = {
                     }
                 )
             }

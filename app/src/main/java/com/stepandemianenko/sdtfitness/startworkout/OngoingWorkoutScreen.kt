@@ -68,7 +68,6 @@ fun OngoingWorkoutRoute(
     onLogSetClick: (weightKg: Int, reps: Int, rpeIndex: Int) -> Unit,
     onSessionCompleted: (Long) -> Unit = {},
     onHomeClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     viewModel: OngoingWorkoutViewModel = viewModel()
@@ -115,7 +114,6 @@ fun OngoingWorkoutRoute(
             }
         },
         onHomeClick = onHomeClick,
-        onCommunityClick = onCommunityClick,
         onProgressClick = onProgressClick,
         onProfileClick = onProfileClick
     )
@@ -135,7 +133,6 @@ fun OngoingWorkoutScreen(
     onRpeSelectClick: (Int) -> Unit,
     onLogSetClick: () -> Unit,
     onHomeClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProgressClick: () -> Unit,
     onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -149,7 +146,6 @@ fun OngoingWorkoutScreen(
         bottomBar = {
             OngoingBottomNavigationBar(
                 onHomeClick = onHomeClick,
-                onCommunityClick = onCommunityClick,
                 onProgressClick = onProgressClick,
                 onProfileClick = onProfileClick
             )
@@ -870,7 +866,6 @@ private fun SetProgressLine(
 private fun OngoingBottomNavigationBar(
     onHomeClick: () -> Unit,
     onProgressClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
     Row(
@@ -885,15 +880,6 @@ private fun OngoingBottomNavigationBar(
         OngoingBottomNavItem(label = "Home", icon = R.drawable.home_nav_home, textColor = WorkoutInactiveIcon, onClick = onHomeClick)
         OngoingBottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout_curr, textColor = Color(0xFFBF7E65), onClick = {})
         OngoingBottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress, textColor = WorkoutInactiveIcon, onClick = onProgressClick)
-        OngoingBottomNavItem(
-            label = "Community",
-            icon = R.drawable.home_nav_community,
-            textColor = WorkoutInactiveIcon,
-            iconWidth = 28.dp,
-            iconHeight = 24.dp,
-            iconContentScale = ContentScale.FillBounds,
-            onClick = onCommunityClick
-        )
         OngoingBottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = WorkoutInactiveIcon, onClick = onProfileClick)
     }
 }
@@ -949,7 +935,6 @@ private fun OngoingWorkoutScreenPreview() {
             onRpeSelectClick = {},
             onLogSetClick = {},
             onHomeClick = {},
-            onCommunityClick = {},
             onProgressClick = {},
             onProfileClick = {}
         )

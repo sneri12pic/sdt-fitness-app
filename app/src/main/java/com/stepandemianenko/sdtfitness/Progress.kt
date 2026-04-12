@@ -101,7 +101,6 @@ private val ProgressBottomInsetCorner = 16.dp
 fun ProgressRoute(
     onHomeClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
-    onCommunityClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     viewModel: ProgressViewModel = viewModel()
 ) {
@@ -145,7 +144,6 @@ fun ProgressRoute(
         onRefreshHealthConnectClick = viewModel::refreshHealthConnectData,
         onHomeClick = onHomeClick,
         onWorkoutClick = onWorkoutClick,
-        onCommunityClick = onCommunityClick,
         onProfileClick = onProfileClick
     )
 }
@@ -158,7 +156,6 @@ fun ProgressScreen(
     onRefreshHealthConnectClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
-    onCommunityClick: () -> Unit = {},
     onProfileClick: () -> Unit = {}
 ) {
     Surface(
@@ -198,7 +195,6 @@ fun ProgressScreen(
                     modifier = Modifier.align(Alignment.BottomCenter),
                     onHomeClick = onHomeClick,
                     onWorkoutClick = onWorkoutClick,
-                    onCommunityClick = onCommunityClick,
                     onProfileClick = onProfileClick
                 )
             }
@@ -723,7 +719,6 @@ private fun ProgressBottomNavigationBar(
     modifier: Modifier = Modifier,
     onHomeClick: () -> Unit,
     onWorkoutClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -738,15 +733,6 @@ private fun ProgressBottomNavigationBar(
             ProgressBottomNavItem(label = "Home", icon = R.drawable.home_nav_home, textColor = ProgressInactiveIcon, onClick = onHomeClick)
             ProgressBottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout, textColor = ProgressInactiveIcon, onClick = onWorkoutClick)
             ProgressBottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress_curr, textColor = Color(0xFFBF7E65), onClick = {})
-            ProgressBottomNavItem(
-                label = "Community",
-                icon = R.drawable.home_nav_community,
-                textColor = ProgressInactiveIcon,
-                iconWidth = 28.dp,
-                iconHeight = 24.dp,
-                iconContentScale = ContentScale.FillBounds,
-                onClick = onCommunityClick
-            )
             ProgressBottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = ProgressInactiveIcon, onClick = onProfileClick)
         }
 

@@ -105,7 +105,6 @@ fun StartWorkoutRoute(
     onExerciseClick: (WorkoutExerciseUiModel) -> Unit,
     onAddExerciseClick: () -> Unit,
     onHomeClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     viewModel: StartWorkoutViewModel = viewModel()
@@ -136,7 +135,6 @@ fun StartWorkoutRoute(
                 onAddExerciseClick()
             },
             onHomeClick = onHomeClick,
-            onCommunityClick = onCommunityClick,
             onProgressClick = onProgressClick,
             onProfileClick = onProfileClick
         )
@@ -201,7 +199,6 @@ fun StartWorkoutRoute(
             onRetryClick = { viewModel.onEvent(StartWorkoutUiEvent.RetryLoad) },
             snackbarHostState = snackbarHostState,
             onHomeClick = onHomeClick,
-            onCommunityClick = onCommunityClick,
             onProgressClick = onProgressClick,
             onProfileClick = onProfileClick
         )
@@ -253,7 +250,6 @@ fun StartWorkoutScreen(
     onRetryClick: () -> Unit,
     snackbarHostState: SnackbarHostState,
     onHomeClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProgressClick: () -> Unit,
     onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -267,7 +263,6 @@ fun StartWorkoutScreen(
         bottomBar = {
             BottomNavigationBar(
                 onHomeClick = onHomeClick,
-                onCommunityClick = onCommunityClick,
                 onProgressClick = onProgressClick,
                 onProfileClick = onProfileClick
             )
@@ -1143,7 +1138,6 @@ private fun BottomNavigationBar(
     modifier: Modifier = Modifier,
     onHomeClick: () -> Unit,
     onProgressClick: () -> Unit,
-    onCommunityClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -1158,15 +1152,6 @@ private fun BottomNavigationBar(
             BottomNavItem(label = "Home", icon = R.drawable.home_nav_home, textColor = InactiveIcon, onClick = onHomeClick)
             BottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout_curr, textColor = Color(0xFFBF7E65), onClick = {})
             BottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress, textColor = InactiveIcon, onClick = onProgressClick)
-            BottomNavItem(
-                label = "Community",
-                icon = R.drawable.home_nav_community,
-                textColor = InactiveIcon,
-                iconWidth = 28.dp,
-                iconHeight = 24.dp,
-                iconContentScale = ContentScale.FillBounds,
-                onClick = onCommunityClick
-            )
             BottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = InactiveIcon, onClick = onProfileClick)
         }
 
@@ -1238,7 +1223,6 @@ private fun StartWorkoutScreenPreview() {
         onRetryClick = {},
         snackbarHostState = SnackbarHostState(),
         onHomeClick = {},
-        onCommunityClick = {},
         onProgressClick = {},
         onProfileClick = {}
     )
@@ -1260,7 +1244,6 @@ private fun StartWorkoutScreenLoadingPreview() {
         onRetryClick = {},
         snackbarHostState = SnackbarHostState(),
         onHomeClick = {},
-        onCommunityClick = {},
         onProgressClick = {},
         onProfileClick = {}
     )
@@ -1282,7 +1265,6 @@ private fun StartWorkoutScreenEmptyPreview() {
         onRetryClick = {},
         snackbarHostState = SnackbarHostState(),
         onHomeClick = {},
-        onCommunityClick = {},
         onProgressClick = {},
         onProfileClick = {}
     )
