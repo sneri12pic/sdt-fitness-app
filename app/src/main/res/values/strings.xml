@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">SDT Fitness App</string>
+    <string name="rest_day_back_to_home">Back to Home</string>
+    <string name="rest_day_recovery_title">Today\'s recovery</string>
+    <string name="rest_day_recovery_subtitle">Keep your routine supportive, even on low-energy days.</string>
+    <string name="rest_day_hero_content_description">Rest day illustration</string>
+    <string name="rest_day_option_log_rest_title">Log rest day</string>
+    <string name="rest_day_option_log_rest_description">Record recovery and keep your history accurate</string>
+    <string name="rest_day_option_short_check_title">Short check-in</string>
+    <string name="rest_day_option_short_check_description">Log mobility, a walk, or a quick note</string>
+    <string name="rest_day_chip_mobility">Mobility</string>
+    <string name="rest_day_chip_walk">Walk</string>
+    <string name="rest_day_chip_note">Note</string>
+    <string name="rest_day_save_rest_day">Save rest day</string>
+    <string name="rest_day_save_check_in">Save check-in</string>
+    <string name="rest_day_helper_text">Counts toward consistency, not as a workout</string>
+    <string name="rest_day_secondary_action">See weekly pattern</string>
 </resources>

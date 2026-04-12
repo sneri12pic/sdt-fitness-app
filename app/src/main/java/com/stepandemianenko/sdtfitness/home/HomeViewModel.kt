@@ -1,6 +1,7 @@
 package com.stepandemianenko.sdtfitness.home
 
 import android.app.Application
+import com.stepandemianenko.sdtfitness.data.AppGraph
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -9,7 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.YearMonth
 
 sealed interface HomeUiEvent {
     data object OpenDailyQuestEditor : HomeUiEvent
@@ -17,6 +17,8 @@ sealed interface HomeUiEvent {
     data class DailyQuestTargetInputChanged(val value: String) : HomeUiEvent
     data class DailyQuestCurrentInputChanged(val value: String) : HomeUiEvent
     data object SaveDailyQuestEditor : HomeUiEvent
+    data class SelectRecoveryOption(val option: RecoveryOption) : HomeUiEvent
+    data class SaveRecoveryOption(val option: RecoveryOption) : HomeUiEvent
     data object PreviousRoutineMonth : HomeUiEvent
     data object NextRoutineMonth : HomeUiEvent
 }
@@ -25,6 +27,7 @@ class HomeViewModel(
     application: Application
 ) : AndroidViewModel(application) {
     private val repository = HomeRepository.getInstance(application)
+    private val healthConnectManager = AppGraph.healthConnectManager(application)
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -59,6 +62,17 @@ class HomeViewModel(
             }
 
             HomeUiEvent.SaveDailyQuestEditor -> saveDailyQuest()
+            is HomeUiEvent.SelectRecoveryOption -> {
+                _uiState.update {
+                    it.copy(
+                        dashboard = it.dashboard.copy(
+                            restDay = it.dashboard.restDay.copy(selectedOption = event.option)
+                        )
+                    )
+                }
+            }
+
+            is HomeUiEvent.SaveRecoveryOption -> saveRecoveryOption(event.option)
             HomeUiEvent.PreviousRoutineMonth -> {
                 _uiState.update { it.copy(visibleRoutineMonth = it.visibleRoutineMonth.minusMonths(1)) }
             }
@@ -93,6 +107,28 @@ class HomeViewModel(
         )
 
         _uiState.update { it.copy(isDailyQuestEditorOpen = false) }
+    }
+
+    private fun saveRecoveryOption(option: RecoveryOption) {
+        repository.logTodayRecovery(option)
+    }
+
+    fun syncHealthConnectSteps() {
+        viewModelScope.launch {
+            val canReadHealthConnect = runCatching {
+                healthConnectManager.isAvailable() && healthConnectManager.hasAllPermissions()
+            }.getOrDefault(false)
+
+            if (!canReadHealthConnect) return@launch
+
+            val importedSteps = runCatching {
+                healthConnectManager.readTodaySteps()
+            }.getOrNull() ?: return@launch
+
+            repository.updateStepsFromHealthConnect(
+                currentSteps = importedSteps.coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            )
+        }
     }
 
     private fun sanitizeNumericInput(input: String): String {

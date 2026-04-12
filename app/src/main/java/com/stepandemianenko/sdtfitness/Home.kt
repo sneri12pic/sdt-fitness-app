@@ -53,7 +53,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -67,7 +73,8 @@ import com.stepandemianenko.sdtfitness.home.DailyQuestState
 import com.stepandemianenko.sdtfitness.home.HomeUiEvent
 import com.stepandemianenko.sdtfitness.home.HomeUiState
 import com.stepandemianenko.sdtfitness.home.HomeViewModel
-import com.stepandemianenko.sdtfitness.home.calculateCurrentStreak
+import com.stepandemianenko.sdtfitness.home.RecoveryOption
+import com.stepandemianenko.sdtfitness.home.RestDayUiState
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -151,13 +158,16 @@ fun HomeRoute(
         onDailyQuestTargetInputChanged = { viewModel.onEvent(HomeUiEvent.DailyQuestTargetInputChanged(it)) },
         onDailyQuestCurrentInputChanged = { viewModel.onEvent(HomeUiEvent.DailyQuestCurrentInputChanged(it)) },
         onSaveDailyQuestEditor = { viewModel.onEvent(HomeUiEvent.SaveDailyQuestEditor) },
+        onRecoveryOptionSelected = { viewModel.onEvent(HomeUiEvent.SelectRecoveryOption(it)) },
+        onSaveRecoveryOption = { viewModel.onEvent(HomeUiEvent.SaveRecoveryOption(it)) },
         onPreviousRoutineMonth = { viewModel.onEvent(HomeUiEvent.PreviousRoutineMonth) },
         onNextRoutineMonth = { viewModel.onEvent(HomeUiEvent.NextRoutineMonth) },
         onStartWorkoutClick = onStartWorkoutClick,
         onWorkoutClick = onWorkoutClick,
         onProgressClick = onProgressClick,
         onCommunityClick = onCommunityClick,
-        onProfileClick = onProfileClick
+        onProfileClick = onProfileClick,
+        onSyncHealthConnectClick = viewModel::syncHealthConnectSteps
     )
 }
 
@@ -169,13 +179,16 @@ fun HomeOneScreen(
     onDailyQuestTargetInputChanged: (String) -> Unit = {},
     onDailyQuestCurrentInputChanged: (String) -> Unit = {},
     onSaveDailyQuestEditor: () -> Unit = {},
+    onRecoveryOptionSelected: (RecoveryOption) -> Unit = {},
+    onSaveRecoveryOption: (RecoveryOption) -> Unit = {},
     onPreviousRoutineMonth: () -> Unit = {},
     onNextRoutineMonth: () -> Unit = {},
     onStartWorkoutClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
     onCommunityClick: () -> Unit = {},
-    onProfileClick: () -> Unit = {}
+    onProfileClick: () -> Unit = {},
+    onSyncHealthConnectClick: () -> Unit = {}
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -185,7 +198,6 @@ fun HomeOneScreen(
             // Keep scroll content clear of the fixed bottom bar + system nav area.
             val reservedBottomHeight = maxHeight * HomeReservedBottomFraction
             var activeScreen by rememberSaveable { mutableStateOf(HomeScreen.Dashboard) }
-            var healthConnectLastUpdatedMillis by rememberSaveable { mutableStateOf<Long?>(null) }
 
             BackHandler(enabled = activeScreen == HomeScreen.RestDayDetails) {
                 activeScreen = HomeScreen.Dashboard
@@ -221,14 +233,19 @@ fun HomeOneScreen(
                                 onOpenDailyQuestEditor = onOpenDailyQuestEditor,
                                 onPreviousRoutineMonth = onPreviousRoutineMonth,
                                 onNextRoutineMonth = onNextRoutineMonth,
-                                healthConnectLastUpdatedMillis = healthConnectLastUpdatedMillis,
-                                onSyncHealthConnectClick = {
-                                    healthConnectLastUpdatedMillis = System.currentTimeMillis()
-                                }
+                                healthConnectLastUpdatedMillis = uiState.dashboard.dailyQuest.lastUpdatedMillis,
+                                onSyncHealthConnectClick = onSyncHealthConnectClick
                             )
 
                             HomeScreen.RestDayDetails -> RestDayDetailsContent(
-                                onBackClick = { activeScreen = HomeScreen.Dashboard }
+                                restDayState = uiState.dashboard.restDay,
+                                onRecoveryOptionSelected = onRecoveryOptionSelected,
+                                onSaveSelectedRecovery = { selectedOption ->
+                                    onSaveRecoveryOption(selectedOption)
+                                    activeScreen = HomeScreen.Dashboard
+                                },
+                                onBackClick = { activeScreen = HomeScreen.Dashboard },
+                                onSeeWeeklyPatternClick = onProgressClick
                             )
                         }
                     }
@@ -318,8 +335,15 @@ private fun DashboardContent(
 
 @Composable
 private fun RestDayDetailsContent(
-    onBackClick: () -> Unit
+    restDayState: RestDayUiState,
+    onRecoveryOptionSelected: (RecoveryOption) -> Unit,
+    onSaveSelectedRecovery: (RecoveryOption) -> Unit,
+    onBackClick: () -> Unit,
+    onSeeWeeklyPatternClick: () -> Unit
 ) {
+    val selectedOption = restDayState.selectedOption
+    val optionSpacing = dimensionResource(id = R.dimen.rest_day_option_spacing)
+
     Row(
         modifier = Modifier
             .clickable(onClick = onBackClick)
@@ -335,7 +359,7 @@ private fun RestDayDetailsContent(
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            text = "Back to Home",
+            text = stringResource(id = R.string.rest_day_back_to_home),
             color = SecondaryText,
             fontSize = 14.sp,
             lineHeight = 16.sp,
@@ -343,79 +367,233 @@ private fun RestDayDetailsContent(
         )
     }
 
-    HomeCard(
-        horizontalPadding = 14.dp,
-        verticalPadding = 14.dp
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(optionSpacing)) {
+        RestDayHeroCard()
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                text = "Rest Day",
+                text = stringResource(id = R.string.rest_day_recovery_title),
                 color = PrimaryText,
-                fontSize = 24.sp,
+                fontSize = 22.sp,
                 lineHeight = 24.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Recovery is part of progress. You can log today and optionally do a light check-in.",
+                text = stringResource(id = R.string.rest_day_recovery_subtitle),
                 color = SecondaryText,
                 fontSize = 14.sp,
                 lineHeight = 18.sp
             )
-            Button(
-                onClick = {},
+        }
+
+        RecoveryOptionCard(
+            title = stringResource(id = R.string.rest_day_option_log_rest_title),
+            description = stringResource(id = R.string.rest_day_option_log_rest_description),
+            isSelected = selectedOption == RecoveryOption.REST_DAY,
+            onClick = { onRecoveryOptionSelected(RecoveryOption.REST_DAY) }
+        )
+
+        RecoveryOptionCard(
+            title = stringResource(id = R.string.rest_day_option_short_check_title),
+            description = stringResource(id = R.string.rest_day_option_short_check_description),
+            isSelected = selectedOption == RecoveryOption.SHORT_CHECK_IN,
+            onClick = { onRecoveryOptionSelected(RecoveryOption.SHORT_CHECK_IN) },
+            supportingChips = listOf(
+                stringResource(id = R.string.rest_day_chip_mobility),
+                stringResource(id = R.string.rest_day_chip_walk),
+                stringResource(id = R.string.rest_day_chip_note)
+            )
+        )
+
+        RestDayPrimaryAction(
+            label = if (selectedOption == RecoveryOption.REST_DAY) {
+                stringResource(id = R.string.rest_day_save_rest_day)
+            } else {
+                stringResource(id = R.string.rest_day_save_check_in)
+            },
+            onClick = { onSaveSelectedRecovery(selectedOption) }
+        )
+
+        Text(
+            text = stringResource(id = R.string.rest_day_helper_text),
+            color = SecondaryText,
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+
+        Button(
+            onClick = onSeeWeeklyPatternClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(dimensionResource(id = R.dimen.rest_day_secondary_button_height)),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = CardBackground,
+                contentColor = SecondaryText
+            )
+        ) {
+            Text(
+                text = stringResource(id = R.string.rest_day_secondary_action),
+                fontSize = 14.sp,
+                lineHeight = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun RestDayHeroCard() {
+    HomeCard(horizontalPadding = 0.dp, verticalPadding = 0.dp) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(dimensionResource(id = R.dimen.rest_day_hero_height)),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.recovery),
+                contentDescription = stringResource(id = R.string.rest_day_hero_content_description),
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(42.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = ActionColor,
-                    contentColor = Color(0xFFFCE8DA)
-                )
-            ) {
-                Text(
-                    text = "Log rest day",
-                    fontSize = 15.sp,
-                    lineHeight = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                    .fillMaxSize()
+                    .padding(vertical = 8.dp, horizontal = 14.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecoveryOptionCard(
+    title: String,
+    description: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    supportingChips: List<String> = emptyList()
+) {
+    val optionRadius = dimensionResource(id = R.dimen.rest_day_option_corner_radius)
+    val optionVerticalPadding = dimensionResource(id = R.dimen.rest_day_option_vertical_padding)
+    val optionHorizontalPadding = dimensionResource(id = R.dimen.rest_day_option_horizontal_padding)
+    val borderColor = if (isSelected) ActionColor else SecondaryText.copy(alpha = 0.20f)
+    val containerColor = if (isSelected) ActionColor.copy(alpha = 0.13f) else CardBackground
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(optionRadius))
+            .border(
+                width = if (isSelected) 1.5.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(optionRadius)
+            )
+            .background(containerColor)
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                selected = isSelected
+                role = Role.RadioButton
             }
-            Button(
-                onClick = {},
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CardBackground,
-                    contentColor = SecondaryText
-                )
-            ) {
-                Text(
-                    text = "Short check-in",
-                    fontSize = 14.sp,
-                    lineHeight = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            .padding(horizontal = optionHorizontalPadding, vertical = optionVerticalPadding)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .border(
+                            width = 1.5.dp,
+                            color = if (isSelected) ActionColor else SecondaryText.copy(alpha = 0.35f),
+                            shape = CircleShape
+                        )
+                        .background(if (isSelected) ActionColor.copy(alpha = 0.14f) else Color.Transparent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(ActionColor)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = title,
+                        color = PrimaryText,
+                        fontSize = 17.sp,
+                        lineHeight = 19.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = description,
+                        color = SecondaryText,
+                        fontSize = 13.sp,
+                        lineHeight = 16.sp
+                    )
+                }
             }
-            Button(
-                onClick = {},
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CardBackground,
-                    contentColor = SecondaryText
-                )
-            ) {
-                Text(
-                    text = "View weekly progress",
-                    fontSize = 14.sp,
-                    lineHeight = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            if (supportingChips.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    supportingChips.forEach { label ->
+                        RestDaySupportChip(label = label)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun RestDaySupportChip(label: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(dimensionResource(id = R.dimen.rest_day_chip_corner_radius)))
+            .background(CardBackground.copy(alpha = 0.92f))
+            .border(
+                width = 1.dp,
+                color = SecondaryText.copy(alpha = 0.25f),
+                shape = RoundedCornerShape(dimensionResource(id = R.dimen.rest_day_chip_corner_radius))
+            )
+            .padding(
+                horizontal = dimensionResource(id = R.dimen.rest_day_chip_horizontal_padding),
+                vertical = dimensionResource(id = R.dimen.rest_day_chip_vertical_padding)
+            )
+    ) {
+        Text(
+            text = label,
+            color = SecondaryText,
+            fontSize = 12.sp,
+            lineHeight = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun RestDayPrimaryAction(
+    label: String,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(dimensionResource(id = R.dimen.rest_day_primary_button_height)),
+        shape = RoundedCornerShape(50),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = ActionColor,
+            contentColor = Color(0xFFFCE8DA)
+        )
+    ) {
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
@@ -425,58 +603,70 @@ private fun HeaderSection(
     onSyncHealthConnectClick: () -> Unit
 ) {
     val updatedText = healthConnectLastUpdatedMillis?.let { formatUpdatedAgoText(it) }
+    val subtitleBlockHeight = 36.dp
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Good afternoon",
+            color = PrimaryText,
+            fontSize = 40.sp,
+            lineHeight = 40.sp,
+            fontWeight = FontWeight.Bold
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Good afternoon",
-                color = PrimaryText,
-                fontSize = 40.sp,
-                lineHeight = 40.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-            SyncActionButton(onClick = onSyncHealthConnectClick)
-        }
-        Text(
-            text = "Let's keep the momentum going",
-            color = SecondaryText,
-            fontSize = 16.sp,
-            lineHeight = 18.sp
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SyncedStatusIcon()
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Synced from Health Connect",
-                color = SecondaryText,
-                fontSize = 14.sp,
-                lineHeight = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            if (updatedText != null) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
-                    text = " • $updatedText",
+                    text = "Let's keep the momentum going",
                     color = SecondaryText,
-                    fontSize = 12.sp,
-                    lineHeight = 12.sp
+                    fontSize = 16.sp,
+                    lineHeight = 18.sp
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SyncedStatusIcon()
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Synced from Health Connect",
+                        color = SecondaryText,
+                        fontSize = 14.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (updatedText != null) {
+                        Text(
+                            text = " • $updatedText",
+                            color = SecondaryText,
+                            fontSize = 12.sp,
+                            lineHeight = 12.sp
+                        )
+                    }
+                }
             }
+            Spacer(modifier = Modifier.width(10.dp))
+            SyncActionButton(
+                onClick = onSyncHealthConnectClick,
+                modifier = Modifier.height(subtitleBlockHeight)
+            )
         }
     }
 }
 
 @Composable
 private fun SyncActionButton(
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Image(
         painter = painterResource(id = R.drawable.synched_title),
-        contentDescription = "Sync",
-        modifier = Modifier.size(15.dp)
+        contentDescription = "Refresh and import Health Connect data",
+        modifier = modifier
+            .clickable(onClick = onClick),
+        contentScale = ContentScale.Fit
     )
 }
 
@@ -876,7 +1066,7 @@ private fun RoutineCard(
     val calendarDays = remember(visibleMonth, streakDates, today) {
         buildCalendarDays(visibleMonth, streakDates, today)
     }
-    val streakCount = calculateCurrentStreak(streakDates, today)
+    val streakCount = calculateCurrentStreakForRoutine(streakDates, today)
 
     HomeCard(
         modifier = Modifier.clickable(onClick = onClick),
@@ -986,6 +1176,20 @@ private fun buildCalendarDays(
             isToday = date == today
         )
     }
+}
+
+private fun calculateCurrentStreakForRoutine(
+    streakDates: Set<LocalDate>,
+    today: LocalDate
+): Int {
+    if (streakDates.isEmpty()) return 0
+    var streak = 0
+    var cursor = today
+    while (streakDates.contains(cursor)) {
+        streak += 1
+        cursor = cursor.minusDays(1)
+    }
+    return streak
 }
 
 @Composable
@@ -1149,6 +1353,12 @@ private fun HomeOneScreenPreview() {
 @Composable
 private fun RestDayDetailsPreview() {
     MaterialTheme {
-        RestDayDetailsContent(onBackClick = {})
+        RestDayDetailsContent(
+            restDayState = RestDayUiState(),
+            onRecoveryOptionSelected = {},
+            onSaveSelectedRecovery = {},
+            onBackClick = {},
+            onSeeWeeklyPatternClick = {}
+        )
     }
 }

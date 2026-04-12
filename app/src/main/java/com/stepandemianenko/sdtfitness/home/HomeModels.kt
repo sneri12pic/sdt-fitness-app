@@ -9,6 +9,11 @@ enum class DailyStepsSourceType {
     HEALTH_CONNECT
 }
 
+enum class RecoveryOption {
+    REST_DAY,
+    SHORT_CHECK_IN
+}
+
 data class DailyQuestState(
     val sourceType: DailyStepsSourceType = DailyStepsSourceType.MANUAL,
     val targetSteps: Int = 5_000,
@@ -43,11 +48,18 @@ data class DailyGoalSummaryState(
 data class HomeDashboardState(
     val dailyQuest: DailyQuestState = DailyQuestState(),
     val dailyGoalSummary: DailyGoalSummaryState = DailyGoalSummaryState(),
-    val routineStreakDates: Set<LocalDate> = emptySet()
+    val routineStreakDates: Set<LocalDate> = emptySet(),
+    val restDay: RestDayUiState = RestDayUiState()
 ) {
     val currentStreakCount: Int
         get() = calculateCurrentStreak(routineStreakDates, LocalDate.now())
 }
+
+data class RestDayUiState(
+    val selectedOption: RecoveryOption = RecoveryOption.REST_DAY,
+    val savedTodayOption: RecoveryOption? = null,
+    val savedTodayAtMillis: Long? = null
+)
 
 data class HomeUiState(
     val dashboard: HomeDashboardState = HomeDashboardState(),

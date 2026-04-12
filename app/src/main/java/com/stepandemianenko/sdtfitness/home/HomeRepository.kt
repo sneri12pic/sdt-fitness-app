@@ -74,6 +74,20 @@ class HomeRepository private constructor(
         publishUpdatedState()
     }
 
+    fun logTodayRecovery(
+        option: RecoveryOption
+    ) {
+        val todayKey = LocalDate.now().toString()
+        val now = System.currentTimeMillis()
+        prefs.edit()
+            .putString(KEY_RECOVERY_LOG_DATE, todayKey)
+            .putString(KEY_RECOVERY_LOG_OPTION, option.name)
+            .putLong(KEY_RECOVERY_LOG_AT_MILLIS, now)
+            .apply()
+        addRoutineCompletion(todayKey)
+        publishUpdatedState()
+    }
+
     private fun addRoutineCompletion(dateKey: String) {
         val existing = prefs.getStringSet(KEY_ROUTINE_COMPLETED_DATES, emptySet()).orEmpty().toMutableSet()
         existing.add(dateKey)
@@ -107,6 +121,18 @@ class HomeRepository private constructor(
 
         val workoutsCompletedToday = if (workoutCompletedDates.contains(LocalDate.now())) 1 else 0
         val activeMinutesToday = prefs.getInt(KEY_ACTIVE_MINUTES_TODAY, 0).coerceAtLeast(0)
+        val todayKey = LocalDate.now().toString()
+        val savedRecoveryDate = prefs.getString(KEY_RECOVERY_LOG_DATE, null)
+        val savedRecoveryOption = if (savedRecoveryDate == todayKey) {
+            prefs.getString(KEY_RECOVERY_LOG_OPTION, null)?.let { name ->
+                runCatching { RecoveryOption.valueOf(name) }.getOrNull()
+            }
+        } else {
+            null
+        }
+        val savedRecoveryAtMillis = prefs.getLong(KEY_RECOVERY_LOG_AT_MILLIS, 0L).takeIf {
+            it > 0L && savedRecoveryDate == todayKey
+        }
 
         return HomeDashboardState(
             dailyQuest = DailyQuestState(
@@ -124,7 +150,12 @@ class HomeRepository private constructor(
                 activeMinutesCurrent = activeMinutesToday,
                 activeMinutesTarget = DEFAULT_ACTIVE_MINUTES_TARGET
             ),
-            routineStreakDates = routineDates
+            routineStreakDates = routineDates,
+            restDay = RestDayUiState(
+                selectedOption = savedRecoveryOption ?: RecoveryOption.REST_DAY,
+                savedTodayOption = savedRecoveryOption,
+                savedTodayAtMillis = savedRecoveryAtMillis
+            )
         )
     }
 
@@ -137,6 +168,9 @@ class HomeRepository private constructor(
         private const val KEY_WORKOUT_COMPLETED_DATES = "workout_completed_dates"
         private const val KEY_ACTIVE_MINUTES_TODAY = "active_minutes_today"
         private const val KEY_ROUTINE_COMPLETED_DATES = "routine_completed_dates"
+        private const val KEY_RECOVERY_LOG_DATE = "recovery_log_date"
+        private const val KEY_RECOVERY_LOG_OPTION = "recovery_log_option"
+        private const val KEY_RECOVERY_LOG_AT_MILLIS = "recovery_log_at_millis"
 
         private const val DEFAULT_STEPS_TARGET = 5_000
         private const val DEFAULT_ACTIVE_MINUTES_TARGET = 30

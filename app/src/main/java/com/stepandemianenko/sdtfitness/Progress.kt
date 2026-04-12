@@ -3,6 +3,7 @@ package com.stepandemianenko.sdtfitness
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -28,29 +29,31 @@ import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.stepandemianenko.sdtfitness.home.DailyStepsSourceType
+import java.util.Locale
 
 class Progress : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,6 +92,7 @@ private val ProgressBottomBarBg = Color(0xFFF5E5DA)
 private val ProgressInactiveIcon = Color(0xFFC48778)
 private val ProgressContentMaxWidth = 360.dp
 private const val ProgressReservedBottomFraction = 0.15f
+private const val HealthConnectProviderPackageName = "com.google.android.apps.healthdata"
 private val ProgressHorizontalPadding = 20.dp
 private val ProgressTopPadding = 30.dp
 private val ProgressBottomInsetCorner = 16.dp
@@ -102,9 +106,43 @@ fun ProgressRoute(
     viewModel: ProgressViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val permissionsLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract(
+            HealthConnectProviderPackageName
+        )
+    ) { grantedPermissions ->
+        viewModel.onHealthConnectPermissionsResult(grantedPermissions)
+    }
+
+    val openHealthConnectSettings: () -> Unit = {
+        runCatching {
+            val manageDataIntent = HealthConnectClient.getHealthConnectManageDataIntent(
+                context,
+                HealthConnectProviderPackageName
+            )
+            context.startActivity(manageDataIntent)
+        }.onFailure {
+            runCatching {
+                context.startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS))
+            }.onFailure {
+                viewModel.setHealthConnectError("Couldn't open Health Connect settings on this device.")
+            }
+        }
+        Unit
+    }
 
     ProgressScreen(
         uiState = uiState,
+        onConnectHealthConnectClick = {
+            runCatching {
+                permissionsLauncher.launch(viewModel.requiredHealthConnectPermissions())
+            }.onFailure {
+                openHealthConnectSettings()
+            }
+        },
+        onOpenHealthConnectSettingsClick = openHealthConnectSettings,
+        onRefreshHealthConnectClick = viewModel::refreshHealthConnectData,
         onHomeClick = onHomeClick,
         onWorkoutClick = onWorkoutClick,
         onCommunityClick = onCommunityClick,
@@ -115,6 +153,9 @@ fun ProgressRoute(
 @Composable
 fun ProgressScreen(
     uiState: ProgressUiState = ProgressUiState(isLoading = false),
+    onConnectHealthConnectClick: () -> Unit = {},
+    onOpenHealthConnectSettingsClick: () -> Unit = {},
+    onRefreshHealthConnectClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
     onCommunityClick: () -> Unit = {},
@@ -138,6 +179,9 @@ fun ProgressScreen(
                 ) {
                     ProgressContent(
                         uiState = uiState,
+                        onConnectHealthConnectClick = onConnectHealthConnectClick,
+                        onOpenHealthConnectSettingsClick = onOpenHealthConnectSettingsClick,
+                        onRefreshHealthConnectClick = onRefreshHealthConnectClick,
                         modifier = Modifier
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
@@ -165,10 +209,11 @@ fun ProgressScreen(
 @Composable
 private fun ProgressContent(
     uiState: ProgressUiState,
+    onConnectHealthConnectClick: () -> Unit,
+    onOpenHealthConnectSettingsClick: () -> Unit,
+    onRefreshHealthConnectClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showImportedData by rememberSaveable { mutableStateOf(true) }
-
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -227,48 +272,45 @@ private fun ProgressContent(
             )
         }
 
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            SectionTitle(title = "Outcomes")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(
-                    checked = showImportedData,
-                    onCheckedChange = { showImportedData = it },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color(0xFFFDEDE7),
-                        checkedTrackColor = ProgressAccent,
-                        uncheckedThumbColor = Color(0xFFFDEDE7),
-                        uncheckedTrackColor = ProgressDivider
-                    )
+        SectionTitle(title = "Health Connect")
+        HealthConnectCard(
+            uiState = uiState,
+            onConnectClick = onConnectHealthConnectClick,
+            onOpenSettingsClick = onOpenHealthConnectSettingsClick,
+            onRefreshClick = onRefreshHealthConnectClick
+        )
+
+        val hasImportedWeight = uiState.isHealthConnectAvailable &&
+            uiState.isHealthConnectPermissionGranted &&
+            !uiState.isHealthConnectLoading &&
+            uiState.healthConnectError == null
+
+        if (hasImportedWeight) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutcomeCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.home_shoes,
+                    title = "Steps",
+                    value = "%,d".format(uiState.displayedTodaySteps),
+                    subtitle = "Today",
+                    badge = formatStepsSourceLabel(uiState.displayedStepsSourceType)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Show imported health data",
-                    color = ProgressSecondaryText,
-                    fontSize = 14.sp,
-                    lineHeight = 16.sp
+                OutcomeCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.orange_scales,
+                    title = "Weight",
+                    value = formatWeightKg(uiState.importedLatestWeightKg),
+                    subtitle = "Latest",
+                    badge = "Imported"
                 )
             }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        } else {
             OutcomeCard(
-                modifier = Modifier.weight(1f),
                 iconRes = R.drawable.home_shoes,
                 title = "Steps",
-                value = "62,025",
-                subtitle = "+8% vs last week",
-                badge = "Imported"
-            )
-            OutcomeCard(
-                modifier = Modifier.weight(1f),
-                iconRes = R.drawable.orange_scales,
-                title = "Weight",
-                value = "85.6 kg",
-                subtitle = "+1.0 kg vs last week",
-                badge = "Imported"
+                value = "%,d".format(uiState.displayedTodaySteps),
+                subtitle = "Today",
+                badge = formatStepsSourceLabel(uiState.displayedStepsSourceType)
             )
         }
 
@@ -314,6 +356,109 @@ private fun SectionTitle(title: String) {
         lineHeight = 24.sp,
         fontWeight = FontWeight.Bold
     )
+}
+
+@Composable
+private fun HealthConnectCard(
+    uiState: ProgressUiState,
+    onConnectClick: () -> Unit,
+    onOpenSettingsClick: () -> Unit,
+    onRefreshClick: () -> Unit
+) {
+    val status = when {
+        uiState.healthConnectError != null -> "Error"
+        !uiState.isHealthConnectAvailable -> "Not available"
+        !uiState.isHealthConnectPermissionGranted -> "Permission required"
+        else -> "Connected"
+    }
+
+    ProgressCard(minHeight = 140.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Status: $status",
+                color = ProgressPrimaryText,
+                fontSize = 15.sp,
+                lineHeight = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            val message = when {
+                uiState.healthConnectError != null -> uiState.healthConnectError
+                !uiState.isHealthConnectAvailable -> "Health Connect is unavailable on this device."
+                !uiState.isHealthConnectPermissionGranted -> "Allow Steps and Weight permissions to import your data."
+                uiState.isHealthConnectLoading -> "Importing latest data..."
+                else -> {
+                    val steps = "%,d".format(uiState.importedTodaySteps ?: 0L)
+                    val weight = formatWeightKg(uiState.importedLatestWeightKg)
+                    "Imported today: $steps steps, latest weight: $weight"
+                }
+            }
+
+            Text(
+                text = message,
+                color = ProgressSecondaryText,
+                fontSize = 14.sp,
+                lineHeight = 18.sp
+            )
+
+            if (uiState.isHealthConnectAvailable && !uiState.isHealthConnectPermissionGranted) {
+                Button(
+                    onClick = onConnectClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ProgressAccent,
+                        contentColor = Color(0xFFFDEDE7)
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "Connect Health Connect",
+                        fontSize = 14.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            if (!uiState.isHealthConnectAvailable ||
+                !uiState.isHealthConnectPermissionGranted ||
+                uiState.healthConnectError != null
+            ) {
+                Button(
+                    onClick = onOpenSettingsClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ProgressTileBackground,
+                        contentColor = ProgressPrimaryText
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "Manage access",
+                        fontSize = 14.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            if (uiState.isHealthConnectAvailable && uiState.isHealthConnectPermissionGranted) {
+                Button(
+                    onClick = onRefreshClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ProgressTileBackground,
+                        contentColor = ProgressPrimaryText
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "Refresh import",
+                        fontSize = 14.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -461,6 +606,15 @@ private data class AchievementItem(
     val iconRes: Int,
     val title: String
 )
+
+private fun formatWeightKg(weightKg: Double?): String {
+    if (weightKg == null) return "No data"
+    return String.format(Locale.US, "%.1f kg", weightKg)
+}
+
+private fun formatStepsSourceLabel(sourceType: DailyStepsSourceType): String {
+    return if (sourceType == DailyStepsSourceType.MANUAL) "Manual" else "Imported"
+}
 
 @Composable
 private fun AchievementsCard(
