@@ -11,6 +11,8 @@ data class StartWorkoutUiState(
     val isSessionShortened: Boolean = false,
     val isSelectingExercises: Boolean = false,
     val exerciseCatalog: List<ExerciseCatalogItemUiModel> = emptyList(),
+    val customExerciseSets: List<CustomExerciseSetUiModel> = emptyList(),
+    val selectedCustomSetId: String? = null,
     val selectedExerciseIds: Set<String> = emptySet(),
     val isStartingWorkout: Boolean = false
 ) {
@@ -56,6 +58,13 @@ data class ExerciseCatalogItemUiModel(
 )
 
 @Immutable
+data class CustomExerciseSetUiModel(
+    val id: String,
+    val name: String,
+    val exerciseIds: Set<String>
+)
+
+@Immutable
 data class WorkoutBadgeUiModel(
     val text: String
 )
@@ -86,6 +95,13 @@ sealed interface StartWorkoutUiEvent {
     data object AddExerciseClick : StartWorkoutUiEvent
     data object CloseExercisePickerClick : StartWorkoutUiEvent
     data class ToggleExerciseSelection(val exerciseId: String) : StartWorkoutUiEvent
+    data class SaveCustomExerciseSet(
+        val setId: String?,
+        val name: String,
+        val exerciseIds: Set<String>
+    ) : StartWorkoutUiEvent
+    data class SelectCustomExerciseSet(val setId: String) : StartWorkoutUiEvent
+    data class DeleteCustomExerciseSet(val setId: String) : StartWorkoutUiEvent
     data object ConfirmExerciseSelectionClick : StartWorkoutUiEvent
     data class UpdateExerciseWeight(val exerciseId: String, val weightKg: Int) : StartWorkoutUiEvent
     data class UpdateExerciseReps(val exerciseId: String, val reps: Int) : StartWorkoutUiEvent

@@ -45,6 +45,13 @@ class StartWorkoutViewModel(
             StartWorkoutUiEvent.CloseExercisePickerClick -> closeExercisePicker()
             StartWorkoutUiEvent.ConfirmExerciseSelectionClick -> applyExerciseSelection()
             is StartWorkoutUiEvent.ToggleExerciseSelection -> toggleExerciseSelection(event.exerciseId)
+            is StartWorkoutUiEvent.SaveCustomExerciseSet -> saveCustomExerciseSet(
+                setId = event.setId,
+                name = event.name,
+                exerciseIds = event.exerciseIds
+            )
+            is StartWorkoutUiEvent.SelectCustomExerciseSet -> selectCustomExerciseSet(event.setId)
+            is StartWorkoutUiEvent.DeleteCustomExerciseSet -> deleteCustomExerciseSet(event.setId)
             is StartWorkoutUiEvent.UpdateExerciseWeight -> updateExerciseTargets(
                 exerciseId = event.exerciseId,
                 weightKg = event.weightKg
@@ -108,7 +115,10 @@ class StartWorkoutViewModel(
 
             current.copy(
                 isSelectingExercises = true,
-                selectedExerciseIds = selectedFromPlan ?: fallbackSelection
+                selectedExerciseIds = selectedFromPlan ?: fallbackSelection,
+                selectedCustomSetId = current.selectedCustomSetId?.takeIf { selectedId ->
+                    current.customExerciseSets.any { it.id == selectedId }
+                }
             )
         }
     }
@@ -163,10 +173,93 @@ class StartWorkoutViewModel(
 
     private fun toggleExerciseSelection(exerciseId: String) {
         _uiState.update { current ->
+            val activeSet = current.selectedCustomSetId
+                ?.let { selectedSetId -> current.customExerciseSets.find { it.id == selectedSetId } }
+            val wasSelected = current.selectedExerciseIds.contains(exerciseId)
             val updatedSelection = current.selectedExerciseIds.toMutableSet().apply {
                 if (!add(exerciseId)) remove(exerciseId)
             }
-            current.copy(selectedExerciseIds = updatedSelection)
+            val shouldClearSelectedSet = activeSet != null &&
+                wasSelected &&
+                activeSet.exerciseIds.contains(exerciseId)
+
+            current.copy(
+                selectedExerciseIds = updatedSelection,
+                selectedCustomSetId = if (shouldClearSelectedSet) null else current.selectedCustomSetId
+            )
+        }
+    }
+
+    private fun saveCustomExerciseSet(
+        setId: String?,
+        name: String,
+        exerciseIds: Set<String>
+    ) {
+        val normalizedName = name.trim()
+        if (normalizedName.isBlank() || exerciseIds.isEmpty()) return
+
+        _uiState.update { current ->
+            val normalizedExerciseIds = exerciseIds.toSet()
+            val existing = setId?.let { id -> current.customExerciseSets.find { it.id == id } }
+            val targetId = existing?.id ?: buildCustomSetId(
+                name = normalizedName,
+                existingIds = current.customExerciseSets.mapTo(mutableSetOf()) { it.id }
+            )
+            val updatedSet = CustomExerciseSetUiModel(
+                id = targetId,
+                name = normalizedName,
+                exerciseIds = normalizedExerciseIds
+            )
+
+            val updatedSets = if (existing != null) {
+                current.customExerciseSets.map { set ->
+                    if (set.id == existing.id) updatedSet else set
+                }
+            } else {
+                current.customExerciseSets + updatedSet
+            }
+
+            current.copy(
+                customExerciseSets = updatedSets,
+                selectedCustomSetId = updatedSet.id,
+                selectedExerciseIds = normalizedExerciseIds
+            )
+        }
+    }
+
+    private fun selectCustomExerciseSet(setId: String) {
+        _uiState.update { current ->
+            val set = current.customExerciseSets.find { it.id == setId } ?: return@update current
+            val isTappingAlreadySelectedSet = current.selectedCustomSetId == setId
+            if (isTappingAlreadySelectedSet) {
+                current.copy(
+                    selectedCustomSetId = null,
+                    selectedExerciseIds = current.selectedExerciseIds - set.exerciseIds
+                )
+            } else {
+                current.copy(
+                    selectedCustomSetId = set.id,
+                    selectedExerciseIds = set.exerciseIds
+                )
+            }
+        }
+    }
+
+    private fun deleteCustomExerciseSet(setId: String) {
+        _uiState.update { current ->
+            val updatedSets = current.customExerciseSets.filterNot { it.id == setId }
+            val fallbackSelectedSetId = current.selectedCustomSetId?.takeIf { id ->
+                updatedSets.any { it.id == id }
+            }
+            val fallbackSelectedExerciseIds = fallbackSelectedSetId
+                ?.let { selectedId -> updatedSets.find { it.id == selectedId }?.exerciseIds }
+                ?: current.selectedExerciseIds
+
+            current.copy(
+                customExerciseSets = updatedSets,
+                selectedCustomSetId = fallbackSelectedSetId,
+                selectedExerciseIds = fallbackSelectedExerciseIds
+            )
         }
     }
 
@@ -271,5 +364,26 @@ class StartWorkoutViewModel(
 
             _uiState.update { it.copy(isStartingWorkout = false) }
         }
+    }
+
+    private fun buildCustomSetId(
+        name: String,
+        existingIds: Set<String>
+    ): String {
+        val slug = name
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), "_")
+            .trim('_')
+            .ifBlank { "custom_set" }
+        val baseId = "custom_set_$slug"
+        if (!existingIds.contains(baseId)) return baseId
+
+        var index = 2
+        var candidate = "${baseId}_$index"
+        while (existingIds.contains(candidate)) {
+            index += 1
+            candidate = "${baseId}_$index"
+        }
+        return candidate
     }
 }

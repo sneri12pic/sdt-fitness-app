@@ -125,10 +125,24 @@ fun StartWorkoutRoute(
     if (uiState.isSelectingExercises) {
         ExercisesScreen(
             exercises = uiState.exerciseCatalog,
+            customExerciseSets = uiState.customExerciseSets,
+            selectedCustomSetId = uiState.selectedCustomSetId,
             selectedExerciseIds = uiState.selectedExerciseIds,
             onBackClick = { viewModel.onEvent(StartWorkoutUiEvent.CloseExercisePickerClick) },
             onExerciseToggle = { id ->
                 viewModel.onEvent(StartWorkoutUiEvent.ToggleExerciseSelection(id))
+            },
+            onSaveCustomSet = { setId, name, exerciseIds ->
+                viewModel.onEvent(
+                    StartWorkoutUiEvent.SaveCustomExerciseSet(
+                        setId = setId,
+                        name = name,
+                        exerciseIds = exerciseIds
+                    )
+                )
+            },
+            onCustomSetSelect = { setId ->
+                viewModel.onEvent(StartWorkoutUiEvent.SelectCustomExerciseSet(setId))
             },
             onAddSelectedClick = {
                 viewModel.onEvent(StartWorkoutUiEvent.ConfirmExerciseSelectionClick)
