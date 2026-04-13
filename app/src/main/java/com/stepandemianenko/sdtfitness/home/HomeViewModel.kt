@@ -1,9 +1,9 @@
 package com.stepandemianenko.sdtfitness.home
 
 import android.app.Application
-import com.stepandemianenko.sdtfitness.data.AppGraph
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.stepandemianenko.sdtfitness.data.AppGraph
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,12 +21,18 @@ sealed interface HomeUiEvent {
     data class SaveRecoveryOption(val option: RecoveryOption) : HomeUiEvent
     data object PreviousRoutineMonth : HomeUiEvent
     data object NextRoutineMonth : HomeUiEvent
+    data object CreateTestUser : HomeUiEvent
+    data class SwitchAccount(val accountId: String) : HomeUiEvent
+    data object WipeCurrentAccountData : HomeUiEvent
+    data object ConfirmAddImportedSteps : HomeUiEvent
+    data object DeclineAddImportedSteps : HomeUiEvent
 }
 
 class HomeViewModel(
     application: Application
 ) : AndroidViewModel(application) {
-    private val repository = HomeRepository.getInstance(application)
+    private val repository = AppGraph.homeRepository(application)
+    private val accountSessionManager = AppGraph.accountSessionManager(application)
     private val healthConnectManager = AppGraph.healthConnectManager(application)
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -37,6 +43,33 @@ class HomeViewModel(
             repository.dashboardState.collect { dashboard ->
                 _uiState.update { current ->
                     current.copy(dashboard = dashboard)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            accountSessionManager.observeAccounts().collect { accounts ->
+                _uiState.update { current ->
+                    current.copy(
+                        accounts = accounts
+                            .sortedBy { it.createdAt }
+                            .map { account ->
+                                DebugAccountUiModel(
+                                    id = account.id,
+                                    type = account.type,
+                                    createdAt = account.createdAt,
+                                    isActive = account.isActive
+                                )
+                            }
+                    )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            accountSessionManager.nonNullActiveAccountId.collect { accountId ->
+                _uiState.update { current ->
+                    current.copy(activeAccountId = accountId)
                 }
             }
         }
@@ -79,6 +112,33 @@ class HomeViewModel(
 
             HomeUiEvent.NextRoutineMonth -> {
                 _uiState.update { it.copy(visibleRoutineMonth = it.visibleRoutineMonth.plusMonths(1)) }
+            }
+
+            HomeUiEvent.CreateTestUser -> {
+                viewModelScope.launch {
+                    accountSessionManager.createTestUserAndSwitch()
+                }
+            }
+
+            is HomeUiEvent.SwitchAccount -> {
+                viewModelScope.launch {
+                    accountSessionManager.switchActiveAccount(event.accountId)
+                }
+            }
+
+            HomeUiEvent.WipeCurrentAccountData -> {
+                viewModelScope.launch {
+                    val activeAccountId = accountSessionManager.requireActiveAccountId()
+                    accountSessionManager.wipeAccountData(activeAccountId)
+                }
+            }
+
+            HomeUiEvent.ConfirmAddImportedSteps -> {
+                confirmAddImportedSteps()
+            }
+
+            HomeUiEvent.DeclineAddImportedSteps -> {
+                _uiState.update { it.copy(pendingHealthConnectStepsToAdd = null) }
             }
         }
     }
@@ -125,10 +185,48 @@ class HomeViewModel(
                 healthConnectManager.readTodaySteps()
             }.getOrNull() ?: return@launch
 
-            repository.updateStepsFromHealthConnect(
-                currentSteps = importedSteps.coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            val latestWeightKg = runCatching {
+                healthConnectManager.readLatestWeightKg()
+            }.getOrNull()
+
+            repository.recordHealthConnectImport(
+                importedSteps = importedSteps,
+                latestWeightKg = latestWeightKg
             )
+
+            val normalizedImportedSteps = importedSteps
+                .coerceAtLeast(0L)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            val dailyQuest = _uiState.value.dashboard.dailyQuest
+
+            if (dailyQuest.sourceType == DailyStepsSourceType.HEALTH_CONNECT) {
+                repository.updateStepsFromHealthConnect(currentSteps = normalizedImportedSteps)
+                return@launch
+            }
+
+            if (dailyQuest.currentSteps <= 0 || normalizedImportedSteps <= 0) {
+                return@launch
+            }
+
+            _uiState.update {
+                it.copy(pendingHealthConnectStepsToAdd = normalizedImportedSteps)
+            }
         }
+    }
+
+    private fun confirmAddImportedSteps() {
+        val imported = _uiState.value.pendingHealthConnectStepsToAdd ?: return
+        val current = _uiState.value.dashboard.dailyQuest.currentSteps
+        val target = _uiState.value.dashboard.dailyQuest.targetSteps
+        val updatedCurrent = (current.toLong() + imported.toLong())
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+        repository.setManualDailyQuest(
+            targetSteps = target,
+            currentSteps = updatedCurrent
+        )
+        _uiState.update { it.copy(pendingHealthConnectStepsToAdd = null) }
     }
 
     private fun sanitizeNumericInput(input: String): String {

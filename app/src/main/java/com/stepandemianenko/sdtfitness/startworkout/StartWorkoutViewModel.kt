@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.data.repository.SessionExerciseDraft
-import com.stepandemianenko.sdtfitness.home.HomeRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -31,7 +30,7 @@ class StartWorkoutViewModel(
     val effects: SharedFlow<StartWorkoutEffect> = _effects.asSharedFlow()
     private var lastDeletedExercise: DeletedExerciseSnapshot? = null
     private val workoutSessionRepository = AppGraph.workoutSessionRepository(application)
-    private val homeRepository = HomeRepository.getInstance(application)
+    private val homeRepository = AppGraph.homeRepository(application)
 
     init {
         _uiState.value = StartWorkoutFakeStateProvider.emptyState()

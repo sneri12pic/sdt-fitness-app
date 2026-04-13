@@ -3,7 +3,7 @@ package com.stepandemianenko.sdtfitness.quicklog
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.stepandemianenko.sdtfitness.home.HomeRepository
+import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.home.QuickLogType
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,7 +38,7 @@ class QuickLogViewModel(
     application: Application
 ) : AndroidViewModel(application) {
 
-    private val homeRepository = HomeRepository.getInstance(application)
+    private val homeRepository = AppGraph.homeRepository(application)
 
     private val _uiState = MutableStateFlow(QuickLogUiState())
     val uiState: StateFlow<QuickLogUiState> = _uiState.asStateFlow()

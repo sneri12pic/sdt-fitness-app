@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.data.repository.ProgressSummary
 import com.stepandemianenko.sdtfitness.home.DailyStepsSourceType
-import com.stepandemianenko.sdtfitness.home.HomeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,16 +48,35 @@ class ProgressViewModel(
 ) : AndroidViewModel(application) {
 
     private val repository = AppGraph.progressRepository(application)
+    private val accountSessionManager = AppGraph.accountSessionManager(application)
     private val healthConnectManager = AppGraph.healthConnectManager(application)
-    private val homeRepository = HomeRepository.getInstance(application)
+    private val homeRepository = AppGraph.homeRepository(application)
 
     private val _uiState = MutableStateFlow(ProgressUiState())
     val uiState: StateFlow<ProgressUiState> = _uiState.asStateFlow()
 
     init {
+        observeAccountScopeChanges()
         observeHomeDailyQuest()
         refresh()
         refreshHealthConnectState()
+    }
+
+    private fun observeAccountScopeChanges() {
+        viewModelScope.launch {
+            accountSessionManager.accountScope.collect {
+                _uiState.update { current ->
+                    current.copy(
+                        displayedTodaySteps = 0,
+                        displayedStepsSourceType = DailyStepsSourceType.MANUAL,
+                        importedTodaySteps = null,
+                        importedLatestWeightKg = null,
+                        healthConnectError = null
+                    )
+                }
+                refresh()
+            }
+        }
     }
 
     fun refresh() {
@@ -106,13 +124,12 @@ class ProgressViewModel(
                         it.copy(
                             isHealthConnectAvailable = true,
                             isHealthConnectPermissionGranted = hasPermissions,
+                            isHealthConnectLoading = false,
                             healthConnectError = null
                         )
                     }
 
-                    if (hasPermissions) {
-                        loadHealthConnectData()
-                    } else {
+                    if (!hasPermissions) {
                         _uiState.update {
                             it.copy(
                                 isHealthConnectLoading = false,
@@ -198,9 +215,12 @@ class ProgressViewModel(
             val latestWeight = healthConnectManager.readLatestWeightKg()
             Pair(steps, latestWeight)
         }.onSuccess { (steps, latestWeight) ->
+            homeRepository.recordHealthConnectImport(
+                importedSteps = steps,
+                latestWeightKg = latestWeight
+            )
             val currentQuest = homeRepository.dashboardState.value.dailyQuest
-            val shouldApplyImportedSteps = currentQuest.sourceType == DailyStepsSourceType.HEALTH_CONNECT ||
-                (currentQuest.isManual && currentQuest.lastUpdatedMillis == null && currentQuest.currentSteps == 0)
+            val shouldApplyImportedSteps = currentQuest.sourceType == DailyStepsSourceType.HEALTH_CONNECT
 
             if (shouldApplyImportedSteps) {
                 homeRepository.updateStepsFromHealthConnect(
@@ -234,7 +254,9 @@ class ProgressViewModel(
                 _uiState.update {
                     it.copy(
                         displayedTodaySteps = dashboard.dailyQuest.currentSteps,
-                        displayedStepsSourceType = dashboard.dailyQuest.sourceType
+                        displayedStepsSourceType = dashboard.dailyQuest.sourceType,
+                        importedTodaySteps = dashboard.healthConnectImportedSteps,
+                        importedLatestWeightKg = dashboard.healthConnectLatestWeightKg
                     )
                 }
             }

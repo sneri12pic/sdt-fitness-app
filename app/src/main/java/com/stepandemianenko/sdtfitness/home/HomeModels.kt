@@ -63,7 +63,10 @@ data class HomeDashboardState(
     val dailyGoalSummary: DailyGoalSummaryState = DailyGoalSummaryState(),
     val routineStreakDates: Set<LocalDate> = emptySet(),
     val restDay: RestDayUiState = RestDayUiState(),
-    val quickLogToday: QuickLogEntry? = null
+    val quickLogToday: QuickLogEntry? = null,
+    val healthConnectLastSyncedAtMillis: Long? = null,
+    val healthConnectImportedSteps: Long? = null,
+    val healthConnectLatestWeightKg: Double? = null
 ) {
     val currentStreakCount: Int
         get() = calculateCurrentStreak(routineStreakDates, LocalDate.now())
@@ -80,7 +83,17 @@ data class HomeUiState(
     val visibleRoutineMonth: YearMonth = YearMonth.now(),
     val isDailyQuestEditorOpen: Boolean = false,
     val draftTargetSteps: String = "",
-    val draftCurrentSteps: String = ""
+    val draftCurrentSteps: String = "",
+    val activeAccountId: String? = null,
+    val accounts: List<DebugAccountUiModel> = emptyList(),
+    val pendingHealthConnectStepsToAdd: Int? = null
+)
+
+data class DebugAccountUiModel(
+    val id: String,
+    val type: String,
+    val createdAt: Long,
+    val isActive: Boolean
 )
 
 fun calculateCurrentStreak(

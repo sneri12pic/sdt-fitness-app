@@ -1,5 +1,6 @@
 package com.stepandemianenko.sdtfitness.data.repository
 
+import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
 import com.stepandemianenko.sdtfitness.data.local.SessionSetLogDao
 import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionDao
@@ -65,16 +66,27 @@ data class CompletedSessionReview(
 )
 
 class ProgressRepository(
-    private val database: WorkoutDatabase
+    private val database: WorkoutDatabase,
+    private val accountSessionManager: AccountSessionManager
 ) {
     private val sessionDao: WorkoutSessionDao = database.workoutSessionDao()
     private val exerciseDao = database.sessionExerciseDao()
     private val setLogDao: SessionSetLogDao = database.sessionSetLogDao()
 
     suspend fun getSummary(now: LocalDate = LocalDate.now()): ProgressSummary {
-        val totals = setLogDao.getProgressTotals(completedStatus = WorkoutSessionStatus.COMPLETED)
-        val completedSessions = sessionDao.getByStatus(status = WorkoutSessionStatus.COMPLETED)
-        val workoutDays = setLogDao.getCompletedWorkoutDays(completedStatus = WorkoutSessionStatus.COMPLETED)
+        val accountId = accountSessionManager.requireActiveAccountId()
+        val totals = setLogDao.getProgressTotals(
+            accountId = accountId,
+            completedStatus = WorkoutSessionStatus.COMPLETED
+        )
+        val completedSessions = sessionDao.getByStatus(
+            accountId = accountId,
+            status = WorkoutSessionStatus.COMPLETED
+        )
+        val workoutDays = setLogDao.getCompletedWorkoutDays(
+            accountId = accountId,
+            completedStatus = WorkoutSessionStatus.COMPLETED
+        )
             .mapNotNull { row -> row.workoutDay.takeIf { it.isNotBlank() }?.let(LocalDate::parse) }
             .distinct()
 
@@ -88,7 +100,10 @@ class ProgressRepository(
         val last7DaySessions = sessionDates.count { !it.isBefore(last7Start) && !it.isAfter(now) }
         val previous7DaySessions = sessionDates.count { !it.isBefore(previous7Start) && !it.isAfter(previous7End) }
 
-        val topExercise = setLogDao.getTopExerciseByVolume(completedStatus = WorkoutSessionStatus.COMPLETED)
+        val topExercise = setLogDao.getTopExerciseByVolume(
+            accountId = accountId,
+            completedStatus = WorkoutSessionStatus.COMPLETED
+        )
         val latestCompletedSession = completedSessions.maxByOrNull { it.completedAt ?: it.startedAt }
         val latestSessionCompletedToday = latestCompletedSession?.toLocalDate() == now
 
@@ -112,7 +127,11 @@ class ProgressRepository(
     }
 
     suspend fun getCompletedSessionsHistory(now: LocalDate = LocalDate.now()): CompletedSessionsHistory {
-        val sessions = sessionDao.getByStatus(status = WorkoutSessionStatus.COMPLETED)
+        val accountId = accountSessionManager.requireActiveAccountId()
+        val sessions = sessionDao.getByStatus(
+            accountId = accountId,
+            status = WorkoutSessionStatus.COMPLETED
+        )
             .sortedByDescending { it.completedAt ?: it.startedAt }
 
         val weekStart = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
@@ -130,7 +149,7 @@ class ProgressRepository(
         }
 
         val historyItems = sessions.map { session ->
-            val exerciseCount = exerciseDao.getForSession(session.id).size
+            val exerciseCount = exerciseDao.getForSession(accountId = accountId, sessionId = session.id).size
             CompletedSessionHistoryItem(
                 sessionId = session.id,
                 templateId = session.templateId,
@@ -150,11 +169,12 @@ class ProgressRepository(
     }
 
     suspend fun getCompletedSessionReview(sessionId: Long): CompletedSessionReview? {
-        val session = sessionDao.getById(sessionId) ?: return null
+        val accountId = accountSessionManager.requireActiveAccountId()
+        val session = sessionDao.getById(accountId = accountId, sessionId = sessionId) ?: return null
         if (session.status != WorkoutSessionStatus.COMPLETED) return null
 
-        val exercises = exerciseDao.getForSession(sessionId).sortedBy { it.exerciseOrder }
-        val setLogsByExercise = setLogDao.getForSession(sessionId)
+        val exercises = exerciseDao.getForSession(accountId = accountId, sessionId = sessionId).sortedBy { it.exerciseOrder }
+        val setLogsByExercise = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
             .groupBy { it.sessionExerciseId }
 
         val exerciseReviews = exercises.map { exercise ->

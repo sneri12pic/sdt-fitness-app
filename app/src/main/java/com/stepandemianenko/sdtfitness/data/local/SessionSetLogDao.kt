@@ -15,20 +15,22 @@ interface SessionSetLogDao {
     @Query(
         """
         SELECT * FROM session_set_logs
-        WHERE sessionId = :sessionId
+        WHERE accountId = :accountId
+          AND sessionId = :sessionId
         ORDER BY completedAt ASC
         """
     )
-    suspend fun getForSession(sessionId: Long): List<SessionSetLogEntity>
+    suspend fun getForSession(accountId: String, sessionId: Long): List<SessionSetLogEntity>
 
     @Query(
         """
         SELECT * FROM session_set_logs
-        WHERE sessionId = :sessionId
+        WHERE accountId = :accountId
+          AND sessionId = :sessionId
         ORDER BY completedAt ASC
         """
     )
-    fun observeForSession(sessionId: Long): Flow<List<SessionSetLogEntity>>
+    fun observeForSession(accountId: String, sessionId: Long): Flow<List<SessionSetLogEntity>>
 
     @Query(
         """
@@ -36,7 +38,10 @@ interface SessionSetLogDao {
         FROM session_set_logs AS ssl
         INNER JOIN session_exercises AS se ON se.id = ssl.sessionExerciseId
         INNER JOIN workout_sessions AS ws ON ws.id = ssl.sessionId
-        WHERE se.exerciseId = :exerciseId
+        WHERE ssl.accountId = :accountId
+          AND se.accountId = :accountId
+          AND ws.accountId = :accountId
+          AND se.exerciseId = :exerciseId
           AND ws.status = :completedStatus
           AND ws.id != :excludeSessionId
         ORDER BY ssl.completedAt DESC
@@ -44,6 +49,7 @@ interface SessionSetLogDao {
         """
     )
     suspend fun getLatestCompletedResultForExercise(
+        accountId: String,
         exerciseId: String,
         completedStatus: String,
         excludeSessionId: Long
@@ -55,7 +61,10 @@ interface SessionSetLogDao {
         FROM session_set_logs AS ssl
         INNER JOIN session_exercises AS se ON se.id = ssl.sessionExerciseId
         INNER JOIN workout_sessions AS ws ON ws.id = ssl.sessionId
-        WHERE se.exerciseId = :exerciseId
+        WHERE ssl.accountId = :accountId
+          AND se.accountId = :accountId
+          AND ws.accountId = :accountId
+          AND se.exerciseId = :exerciseId
           AND ws.status = :completedStatus
           AND ws.id != :excludeSessionId
         ORDER BY ssl.actualWeightKg DESC, ssl.actualReps DESC, ssl.completedAt DESC
@@ -63,6 +72,7 @@ interface SessionSetLogDao {
         """
     )
     suspend fun getPersonalBestForExercise(
+        accountId: String,
         exerciseId: String,
         completedStatus: String,
         excludeSessionId: Long
@@ -71,29 +81,32 @@ interface SessionSetLogDao {
     @Query(
         """
         SELECT
-            (SELECT COUNT(*) FROM workout_sessions WHERE status = :completedStatus) AS completedSessions,
-            (SELECT COALESCE(SUM(totalSetsCompleted), 0) FROM workout_sessions WHERE status = :completedStatus) AS totalSets,
-            (SELECT COALESCE(SUM(totalRepsCompleted), 0) FROM workout_sessions WHERE status = :completedStatus) AS totalReps,
-            (SELECT COALESCE(SUM(totalVolumeCompleted), 0.0) FROM workout_sessions WHERE status = :completedStatus) AS totalVolume,
+            (SELECT COUNT(*) FROM workout_sessions WHERE accountId = :accountId AND status = :completedStatus) AS completedSessions,
+            (SELECT COALESCE(SUM(totalSetsCompleted), 0) FROM workout_sessions WHERE accountId = :accountId AND status = :completedStatus) AS totalSets,
+            (SELECT COALESCE(SUM(totalRepsCompleted), 0) FROM workout_sessions WHERE accountId = :accountId AND status = :completedStatus) AS totalReps,
+            (SELECT COALESCE(SUM(totalVolumeCompleted), 0.0) FROM workout_sessions WHERE accountId = :accountId AND status = :completedStatus) AS totalVolume,
             (
                 SELECT COALESCE(MAX(ssl.actualWeightKg), 0)
                 FROM session_set_logs AS ssl
                 INNER JOIN workout_sessions AS ws ON ws.id = ssl.sessionId
-                WHERE ws.status = :completedStatus
+                WHERE ssl.accountId = :accountId
+                  AND ws.accountId = :accountId
+                  AND ws.status = :completedStatus
             ) AS bestLiftKg
         """
     )
-    suspend fun getProgressTotals(completedStatus: String): ProgressTotalsRow
+    suspend fun getProgressTotals(accountId: String, completedStatus: String): ProgressTotalsRow
 
     @Query(
         """
         SELECT DISTINCT date(startedAt / 1000, 'unixepoch') AS workoutDay
         FROM workout_sessions
-        WHERE status = :completedStatus
+        WHERE accountId = :accountId
+          AND status = :completedStatus
         ORDER BY workoutDay DESC
         """
     )
-    suspend fun getCompletedWorkoutDays(completedStatus: String): List<WorkoutDayRow>
+    suspend fun getCompletedWorkoutDays(accountId: String, completedStatus: String): List<WorkoutDayRow>
 
     @Query(
         """
@@ -103,11 +116,17 @@ interface SessionSetLogDao {
         FROM session_set_logs AS ssl
         INNER JOIN session_exercises AS se ON se.id = ssl.sessionExerciseId
         INNER JOIN workout_sessions AS ws ON ws.id = ssl.sessionId
-        WHERE ws.status = :completedStatus
+        WHERE ssl.accountId = :accountId
+          AND se.accountId = :accountId
+          AND ws.accountId = :accountId
+          AND ws.status = :completedStatus
         GROUP BY se.exerciseId, se.exerciseName
         ORDER BY totalVolume DESC
         LIMIT 1
         """
     )
-    suspend fun getTopExerciseByVolume(completedStatus: String): TopExerciseVolumeRow?
+    suspend fun getTopExerciseByVolume(accountId: String, completedStatus: String): TopExerciseVolumeRow?
+
+    @Query("DELETE FROM session_set_logs WHERE accountId = :accountId")
+    suspend fun deleteAllForAccount(accountId: String)
 }

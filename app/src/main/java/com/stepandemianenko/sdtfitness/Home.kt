@@ -73,6 +73,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.home.DailyGoalSummaryState
 import com.stepandemianenko.sdtfitness.home.DailyQuestState
+import com.stepandemianenko.sdtfitness.home.DebugAccountUiModel
 import com.stepandemianenko.sdtfitness.home.HomeUiEvent
 import com.stepandemianenko.sdtfitness.home.HomeUiState
 import com.stepandemianenko.sdtfitness.home.HomeViewModel
@@ -177,7 +178,12 @@ fun HomeRoute(
         onWorkoutClick = onWorkoutClick,
         onProgressClick = onProgressClick,
         onProfileClick = onProfileClick,
-        onSyncHealthConnectClick = viewModel::syncHealthConnectSteps
+        onSyncHealthConnectClick = viewModel::syncHealthConnectSteps,
+        onCreateTestUserClick = { viewModel.onEvent(HomeUiEvent.CreateTestUser) },
+        onSwitchAccountClick = { accountId -> viewModel.onEvent(HomeUiEvent.SwitchAccount(accountId)) },
+        onWipeCurrentAccountDataClick = { viewModel.onEvent(HomeUiEvent.WipeCurrentAccountData) },
+        onConfirmAddImportedStepsClick = { viewModel.onEvent(HomeUiEvent.ConfirmAddImportedSteps) },
+        onDeclineAddImportedStepsClick = { viewModel.onEvent(HomeUiEvent.DeclineAddImportedSteps) }
     )
 }
 
@@ -196,7 +202,12 @@ fun HomeOneScreen(
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
-    onSyncHealthConnectClick: () -> Unit = {}
+    onSyncHealthConnectClick: () -> Unit = {},
+    onCreateTestUserClick: () -> Unit = {},
+    onSwitchAccountClick: (String) -> Unit = {},
+    onWipeCurrentAccountDataClick: () -> Unit = {},
+    onConfirmAddImportedStepsClick: () -> Unit = {},
+    onDeclineAddImportedStepsClick: () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -245,8 +256,13 @@ fun HomeOneScreen(
                                 onOpenDailyQuestEditor = onOpenDailyQuestEditor,
                                 onPreviousRoutineMonth = onPreviousRoutineMonth,
                                 onNextRoutineMonth = onNextRoutineMonth,
-                                healthConnectLastUpdatedMillis = uiState.dashboard.dailyQuest.lastUpdatedMillis,
-                                onSyncHealthConnectClick = onSyncHealthConnectClick
+                                healthConnectLastUpdatedMillis = uiState.dashboard.healthConnectLastSyncedAtMillis,
+                                onSyncHealthConnectClick = onSyncHealthConnectClick,
+                                activeAccountId = uiState.activeAccountId,
+                                accounts = uiState.accounts,
+                                onCreateTestUserClick = onCreateTestUserClick,
+                                onSwitchAccountClick = onSwitchAccountClick,
+                                onWipeCurrentAccountDataClick = onWipeCurrentAccountDataClick
                             )
 
                             HomeScreen.RestDayDetails -> RestDayDetailsContent(
@@ -304,6 +320,36 @@ fun HomeOneScreen(
                     onSave = onSaveDailyQuestEditor
                 )
             }
+
+            val pendingImportedSteps = uiState.pendingHealthConnectStepsToAdd
+            if (pendingImportedSteps != null) {
+                AlertDialog(
+                    onDismissRequest = onDeclineAddImportedStepsClick,
+                    title = {
+                        Text(
+                            text = "Add Imported Steps?",
+                            color = PrimaryText,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "Would you like to add ${formatCount(pendingImportedSteps)} steps to your daily quest from Health Connect?",
+                            color = SecondaryText
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = onConfirmAddImportedStepsClick) {
+                            Text("Yes")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDeclineAddImportedStepsClick) {
+                            Text("No")
+                        }
+                    }
+                )
+            }
         }
     }
 }
@@ -319,7 +365,12 @@ private fun DashboardContent(
     onPreviousRoutineMonth: () -> Unit,
     onNextRoutineMonth: () -> Unit,
     healthConnectLastUpdatedMillis: Long?,
-    onSyncHealthConnectClick: () -> Unit
+    onSyncHealthConnectClick: () -> Unit,
+    activeAccountId: String?,
+    accounts: List<DebugAccountUiModel>,
+    onCreateTestUserClick: () -> Unit,
+    onSwitchAccountClick: (String) -> Unit,
+    onWipeCurrentAccountDataClick: () -> Unit
 ) {
     HeaderSection(
         healthConnectLastUpdatedMillis = healthConnectLastUpdatedMillis,
@@ -367,6 +418,88 @@ private fun DashboardContent(
         onNextMonth = onNextRoutineMonth,
         onClick = {}
     )
+
+    if (BuildConfig.DEBUG) {
+        SectionHeader(title = "Debug Accounts")
+        DebugAccountsCard(
+            activeAccountId = activeAccountId,
+            accounts = accounts,
+            onCreateTestUserClick = onCreateTestUserClick,
+            onSwitchAccountClick = onSwitchAccountClick,
+            onWipeCurrentAccountDataClick = onWipeCurrentAccountDataClick
+        )
+    }
+}
+
+@Composable
+private fun DebugAccountsCard(
+    activeAccountId: String?,
+    accounts: List<DebugAccountUiModel>,
+    onCreateTestUserClick: () -> Unit,
+    onSwitchAccountClick: (String) -> Unit,
+    onWipeCurrentAccountDataClick: () -> Unit
+) {
+    HomeCard {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Active: ${activeAccountId ?: "loading"}",
+                color = SecondaryText,
+                fontSize = 12.sp,
+                lineHeight = 14.sp
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onCreateTestUserClick,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ActionColor,
+                        contentColor = Color(0xFFFCE8DA)
+                    )
+                ) {
+                    Text(text = "Create Test User", fontSize = 12.sp, lineHeight = 12.sp)
+                }
+                Button(
+                    onClick = onWipeCurrentAccountDataClick,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE6B8A5),
+                        contentColor = PrimaryText
+                    )
+                ) {
+                    Text(text = "Wipe Current", fontSize = 12.sp, lineHeight = 12.sp)
+                }
+            }
+
+            accounts.forEach { account ->
+                val selected = account.id == activeAccountId || account.isActive
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (selected) ActionColor.copy(alpha = 0.14f) else Color.Transparent)
+                        .clickable { onSwitchAccountClick(account.id) }
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = account.id.take(8),
+                        modifier = Modifier.weight(1f),
+                        color = PrimaryText,
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                    Text(
+                        text = account.type,
+                        color = SecondaryText,
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

@@ -1,91 +1,140 @@
 package com.stepandemianenko.sdtfitness.home
 
-import android.content.Context
-import android.content.SharedPreferences
+import androidx.room.withTransaction
+import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.local.SyncState
+import com.stepandemianenko.sdtfitness.data.local.UserSettingsDao
+import com.stepandemianenko.sdtfitness.data.local.UserSettingsEntity
+import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-class HomeRepository private constructor(
-    context: Context
+class HomeRepository(
+    private val database: WorkoutDatabase,
+    private val accountSessionManager: AccountSessionManager
 ) {
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val userSettingsDao: UserSettingsDao = database.userSettingsDao()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val _dashboardState = MutableStateFlow(readDashboardState())
+    private val _dashboardState = MutableStateFlow(HomeDashboardState())
     val dashboardState: StateFlow<HomeDashboardState> = _dashboardState.asStateFlow()
+
+    init {
+        scope.launch {
+            accountSessionManager.accountScope.collectLatest { scopeKey ->
+                publishUpdatedState(accountId = scopeKey.accountId)
+            }
+        }
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            publishUpdatedState(accountId = accountId)
+        }
+    }
 
     fun setManualDailyQuest(
         targetSteps: Int,
         currentSteps: Int
     ) {
-        val safeTarget = targetSteps.coerceAtLeast(1)
-        val safeCurrent = currentSteps.coerceAtLeast(0)
-        val now = System.currentTimeMillis()
-
-        prefs.edit()
-            .putString(KEY_DAILY_STEPS_SOURCE, DailyStepsSourceType.MANUAL.name)
-            .putInt(KEY_DAILY_STEPS_TARGET, safeTarget)
-            .putInt(KEY_DAILY_STEPS_CURRENT, safeCurrent)
-            .putLong(KEY_DAILY_STEPS_LAST_UPDATED, now)
-            .apply()
-        publishUpdatedState()
+        mutateSettings { current, now ->
+            current.copy(
+                dailyStepsSource = DailyStepsSourceType.MANUAL.name,
+                dailyStepsTarget = targetSteps.coerceAtLeast(1),
+                dailyStepsCurrent = currentSteps.coerceAtLeast(0),
+                dailyStepsLastUpdated = now
+            )
+        }
     }
 
     fun updateStepsFromHealthConnect(
         currentSteps: Int,
         targetSteps: Int? = null
     ) {
-        val safeCurrent = currentSteps.coerceAtLeast(0)
-        val editor = prefs.edit()
-            .putString(KEY_DAILY_STEPS_SOURCE, DailyStepsSourceType.HEALTH_CONNECT.name)
-            .putInt(KEY_DAILY_STEPS_CURRENT, safeCurrent)
-            .putLong(KEY_DAILY_STEPS_LAST_UPDATED, System.currentTimeMillis())
+        mutateSettings { current, now ->
+            current.copy(
+                dailyStepsSource = DailyStepsSourceType.HEALTH_CONNECT.name,
+                dailyStepsCurrent = currentSteps.coerceAtLeast(0),
+                dailyStepsTarget = targetSteps?.coerceAtLeast(1) ?: current.dailyStepsTarget,
+                dailyStepsLastUpdated = now
+            )
+        }
+    }
 
-        targetSteps?.let { editor.putInt(KEY_DAILY_STEPS_TARGET, it.coerceAtLeast(1)) }
-        editor.apply()
-        publishUpdatedState()
+    fun recordHealthConnectImport(
+        importedSteps: Long,
+        latestWeightKg: Double?
+    ) {
+        mutateSettings { current, now ->
+            current.copy(
+                healthConnectLastSyncedAt = now,
+                healthConnectLastImportedSteps = importedSteps
+                    .coerceAtLeast(0L)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt(),
+                healthConnectLatestWeightKg = latestWeightKg
+            )
+        }
     }
 
     fun setTodayWorkoutCompleted(
         completed: Boolean = true
     ) {
-        val todayKey = LocalDate.now().toString()
-        val existingWorkoutDates = prefs.getStringSet(KEY_WORKOUT_COMPLETED_DATES, emptySet()).orEmpty().toMutableSet()
-        if (completed) {
-            existingWorkoutDates.add(todayKey)
-            addRoutineCompletion(todayKey)
-        } else {
-            existingWorkoutDates.remove(todayKey)
+        mutateSettings { current, _ ->
+            val todayKey = LocalDate.now().toString()
+            val workoutDates = decodeDateSet(current.workoutCompletedDatesCsv).toMutableSet()
+            val routineDates = decodeDateSet(current.routineCompletedDatesCsv).toMutableSet()
+
+            if (completed) {
+                workoutDates.add(todayKey)
+                routineDates.add(todayKey)
+            } else {
+                workoutDates.remove(todayKey)
+            }
+
+            current.copy(
+                workoutCompletedDatesCsv = encodeDateSet(workoutDates),
+                routineCompletedDatesCsv = encodeDateSet(routineDates)
+            )
         }
-        prefs.edit().putStringSet(KEY_WORKOUT_COMPLETED_DATES, existingWorkoutDates).apply()
-        publishUpdatedState()
     }
 
     fun setTodayActiveMinutes(
         minutes: Int
     ) {
-        val safeMinutes = minutes.coerceAtLeast(0)
-        prefs.edit().putInt(KEY_ACTIVE_MINUTES_TODAY, safeMinutes).apply()
-        if (safeMinutes > 0) {
-            addRoutineCompletion(LocalDate.now().toString())
+        mutateSettings { current, _ ->
+            val safeMinutes = minutes.coerceAtLeast(0)
+            val routineDates = decodeDateSet(current.routineCompletedDatesCsv).toMutableSet()
+            if (safeMinutes > 0) {
+                routineDates.add(LocalDate.now().toString())
+            }
+            current.copy(
+                activeMinutesToday = safeMinutes,
+                routineCompletedDatesCsv = encodeDateSet(routineDates)
+            )
         }
-        publishUpdatedState()
     }
 
     fun logTodayRecovery(
         option: RecoveryOption
     ) {
-        val todayKey = LocalDate.now().toString()
-        val now = System.currentTimeMillis()
-        prefs.edit()
-            .putString(KEY_RECOVERY_LOG_DATE, todayKey)
-            .putString(KEY_RECOVERY_LOG_OPTION, option.name)
-            .putLong(KEY_RECOVERY_LOG_AT_MILLIS, now)
-            .apply()
-        addRoutineCompletion(todayKey)
-        publishUpdatedState()
+        mutateSettings { current, now ->
+            val todayKey = LocalDate.now().toString()
+            val routineDates = decodeDateSet(current.routineCompletedDatesCsv).toMutableSet().apply {
+                add(todayKey)
+            }
+            current.copy(
+                recoveryLogDate = todayKey,
+                recoveryLogOption = option.name,
+                recoveryLogAtMillis = now,
+                routineCompletedDatesCsv = encodeDateSet(routineDates)
+            )
+        }
     }
 
     fun logTodayQuickActivity(
@@ -94,79 +143,96 @@ class HomeRepository private constructor(
         timestampMillis: Long = System.currentTimeMillis(),
         source: String = "manual_quick_log"
     ) {
-        val todayKey = LocalDate.now().toString()
-        val safeDuration = durationMinutes.coerceAtLeast(1)
-        val currentActiveMinutes = prefs.getInt(KEY_ACTIVE_MINUTES_TODAY, 0).coerceAtLeast(0)
-        val updatedActiveMinutes = (currentActiveMinutes + safeDuration)
-            .coerceAtMost(Int.MAX_VALUE)
-
-        prefs.edit()
-            .putString(KEY_QUICK_LOG_DATE, todayKey)
-            .putString(KEY_QUICK_LOG_TYPE, type.name)
-            .putInt(KEY_QUICK_LOG_DURATION_MINUTES, safeDuration)
-            .putLong(KEY_QUICK_LOG_TIMESTAMP, timestampMillis)
-            .putString(KEY_QUICK_LOG_SOURCE, source)
-            .putInt(KEY_ACTIVE_MINUTES_TODAY, updatedActiveMinutes)
-            .apply()
-
-        addRoutineCompletion(todayKey)
-        publishUpdatedState()
-    }
-
-    private fun addRoutineCompletion(dateKey: String) {
-        val existing = prefs.getStringSet(KEY_ROUTINE_COMPLETED_DATES, emptySet()).orEmpty().toMutableSet()
-        existing.add(dateKey)
-        prefs.edit().putStringSet(KEY_ROUTINE_COMPLETED_DATES, existing).apply()
-    }
-
-    private fun publishUpdatedState() {
-        _dashboardState.value = readDashboardState()
-    }
-
-    private fun readDashboardState(): HomeDashboardState {
-        val sourceType = prefs.getString(KEY_DAILY_STEPS_SOURCE, DailyStepsSourceType.MANUAL.name)
-            ?.let {
-                runCatching { DailyStepsSourceType.valueOf(it) }.getOrDefault(DailyStepsSourceType.MANUAL)
+        mutateSettings { current, _ ->
+            val todayKey = LocalDate.now().toString()
+            val safeDuration = durationMinutes.coerceAtLeast(1)
+            val updatedActiveMinutes = (current.activeMinutesToday + safeDuration)
+                .coerceAtMost(Int.MAX_VALUE)
+            val routineDates = decodeDateSet(current.routineCompletedDatesCsv).toMutableSet().apply {
+                add(todayKey)
             }
-            ?: DailyStepsSourceType.MANUAL
 
-        val targetSteps = prefs.getInt(KEY_DAILY_STEPS_TARGET, DEFAULT_STEPS_TARGET).coerceAtLeast(1)
-        val currentSteps = prefs.getInt(KEY_DAILY_STEPS_CURRENT, 0).coerceAtLeast(0)
-        val lastUpdated = prefs.getLong(KEY_DAILY_STEPS_LAST_UPDATED, 0L).takeIf { it > 0L }
+            current.copy(
+                quickLogDate = todayKey,
+                quickLogType = type.name,
+                quickLogDurationMinutes = safeDuration,
+                quickLogTimestamp = timestampMillis,
+                quickLogSource = source,
+                activeMinutesToday = updatedActiveMinutes,
+                routineCompletedDatesCsv = encodeDateSet(routineDates)
+            )
+        }
+    }
 
-        val workoutCompletedDates = prefs.getStringSet(KEY_WORKOUT_COMPLETED_DATES, emptySet())
-            .orEmpty()
+    private fun mutateSettings(
+        transform: (UserSettingsEntity, Long) -> UserSettingsEntity
+    ) {
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            val now = System.currentTimeMillis()
+            database.withTransaction {
+                val current = userSettingsDao.getByAccountId(accountId)
+                    ?: defaultSettings(accountId = accountId, now = now)
+                val updated = transform(current, now).copy(
+                    accountId = accountId,
+                    updatedAt = now
+                )
+                userSettingsDao.upsert(updated)
+            }
+            publishUpdatedState(accountId = accountId)
+        }
+    }
+
+    private suspend fun publishUpdatedState(accountId: String) {
+        val settings = userSettingsDao.getByAccountId(accountId)
+            ?: defaultSettings(accountId = accountId, now = System.currentTimeMillis()).also {
+                userSettingsDao.upsert(it)
+            }
+        _dashboardState.value = settings.toDashboardState()
+    }
+
+    private fun defaultSettings(accountId: String, now: Long): UserSettingsEntity {
+        return UserSettingsEntity(
+            accountId = accountId,
+            createdAt = now,
+            updatedAt = now,
+            syncState = SyncState.LOCAL_ONLY
+        )
+    }
+
+    private fun UserSettingsEntity.toDashboardState(): HomeDashboardState {
+        val sourceType = runCatching {
+            DailyStepsSourceType.valueOf(dailyStepsSource)
+        }.getOrDefault(DailyStepsSourceType.MANUAL)
+
+        val targetSteps = dailyStepsTarget.coerceAtLeast(1)
+        val currentSteps = dailyStepsCurrent.coerceAtLeast(0)
+
+        val workoutCompletedDates = decodeDateSet(workoutCompletedDatesCsv)
             .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
             .toSet()
-
-        val routineDates = prefs.getStringSet(KEY_ROUTINE_COMPLETED_DATES, emptySet())
-            .orEmpty()
+        val routineDates = decodeDateSet(routineCompletedDatesCsv)
             .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
             .toSet()
 
         val workoutsCompletedToday = if (workoutCompletedDates.contains(LocalDate.now())) 1 else 0
-        val activeMinutesToday = prefs.getInt(KEY_ACTIVE_MINUTES_TODAY, 0).coerceAtLeast(0)
         val todayKey = LocalDate.now().toString()
-        val savedRecoveryDate = prefs.getString(KEY_RECOVERY_LOG_DATE, null)
-        val savedRecoveryOption = if (savedRecoveryDate == todayKey) {
-            prefs.getString(KEY_RECOVERY_LOG_OPTION, null)?.let { name ->
-                runCatching { RecoveryOption.valueOf(name) }.getOrNull()
+        val savedRecoveryOption = if (recoveryLogDate == todayKey) {
+            recoveryLogOption?.let { optionName ->
+                runCatching { RecoveryOption.valueOf(optionName) }.getOrNull()
             }
         } else {
             null
         }
-        val savedRecoveryAtMillis = prefs.getLong(KEY_RECOVERY_LOG_AT_MILLIS, 0L).takeIf {
-            it > 0L && savedRecoveryDate == todayKey
-        }
-        val savedQuickLogDate = prefs.getString(KEY_QUICK_LOG_DATE, null)
-        val savedQuickLogEntry = if (savedQuickLogDate == todayKey) {
-            val type = prefs.getString(KEY_QUICK_LOG_TYPE, null)?.let { name ->
-                runCatching { QuickLogType.valueOf(name) }.getOrNull()
-            }
-            val duration = prefs.getInt(KEY_QUICK_LOG_DURATION_MINUTES, 0).coerceAtLeast(0)
-            val timestamp = prefs.getLong(KEY_QUICK_LOG_TIMESTAMP, 0L)
-            val source = prefs.getString(KEY_QUICK_LOG_SOURCE, "manual_quick_log") ?: "manual_quick_log"
+        val savedRecoveryAtMillis = recoveryLogAtMillis?.takeIf { recoveryLogDate == todayKey }
 
+        val savedQuickLogEntry = if (quickLogDate == todayKey) {
+            val type = quickLogType?.let { typeName ->
+                runCatching { QuickLogType.valueOf(typeName) }.getOrNull()
+            }
+            val duration = quickLogDurationMinutes.coerceAtLeast(0)
+            val timestamp = quickLogTimestamp ?: 0L
+            val source = quickLogSource ?: "manual_quick_log"
             if (type != null && duration > 0 && timestamp > 0L) {
                 QuickLogEntry(
                     quickLogType = type,
@@ -187,14 +253,14 @@ class HomeRepository private constructor(
                 targetSteps = targetSteps,
                 currentSteps = currentSteps,
                 isManual = sourceType == DailyStepsSourceType.MANUAL,
-                lastUpdatedMillis = lastUpdated
+                lastUpdatedMillis = dailyStepsLastUpdated
             ),
             dailyGoalSummary = DailyGoalSummaryState(
                 stepsCurrent = currentSteps,
                 stepsTarget = targetSteps,
                 workoutsCompleted = workoutsCompletedToday,
                 workoutsTarget = 1,
-                activeMinutesCurrent = activeMinutesToday,
+                activeMinutesCurrent = activeMinutesToday.coerceAtLeast(0),
                 activeMinutesTarget = DEFAULT_ACTIVE_MINUTES_TARGET
             ),
             routineStreakDates = routineDates,
@@ -203,38 +269,29 @@ class HomeRepository private constructor(
                 savedTodayOption = savedRecoveryOption,
                 savedTodayAtMillis = savedRecoveryAtMillis
             ),
-            quickLogToday = savedQuickLogEntry
+            quickLogToday = savedQuickLogEntry,
+            healthConnectLastSyncedAtMillis = healthConnectLastSyncedAt,
+            healthConnectImportedSteps = healthConnectLastImportedSteps?.toLong(),
+            healthConnectLatestWeightKg = healthConnectLatestWeightKg
         )
     }
 
+    private fun decodeDateSet(value: String): Set<String> {
+        if (value.isBlank()) return emptySet()
+        return value.split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    private fun encodeDateSet(values: Set<String>): String {
+        return values
+            .filter { it.isNotBlank() }
+            .sorted()
+            .joinToString(separator = ",")
+    }
+
     companion object {
-        private const val PREFS_NAME = "home_dashboard_prefs"
-        private const val KEY_DAILY_STEPS_SOURCE = "daily_steps_source"
-        private const val KEY_DAILY_STEPS_TARGET = "daily_steps_target"
-        private const val KEY_DAILY_STEPS_CURRENT = "daily_steps_current"
-        private const val KEY_DAILY_STEPS_LAST_UPDATED = "daily_steps_last_updated"
-        private const val KEY_WORKOUT_COMPLETED_DATES = "workout_completed_dates"
-        private const val KEY_ACTIVE_MINUTES_TODAY = "active_minutes_today"
-        private const val KEY_ROUTINE_COMPLETED_DATES = "routine_completed_dates"
-        private const val KEY_RECOVERY_LOG_DATE = "recovery_log_date"
-        private const val KEY_RECOVERY_LOG_OPTION = "recovery_log_option"
-        private const val KEY_RECOVERY_LOG_AT_MILLIS = "recovery_log_at_millis"
-        private const val KEY_QUICK_LOG_DATE = "quick_log_date"
-        private const val KEY_QUICK_LOG_TYPE = "quick_log_type"
-        private const val KEY_QUICK_LOG_DURATION_MINUTES = "quick_log_duration_minutes"
-        private const val KEY_QUICK_LOG_TIMESTAMP = "quick_log_timestamp"
-        private const val KEY_QUICK_LOG_SOURCE = "quick_log_source"
-
-        private const val DEFAULT_STEPS_TARGET = 5_000
         private const val DEFAULT_ACTIVE_MINUTES_TARGET = 30
-
-        @Volatile
-        private var INSTANCE: HomeRepository? = null
-
-        fun getInstance(context: Context): HomeRepository {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: HomeRepository(context).also { INSTANCE = it }
-            }
-        }
     }
 }

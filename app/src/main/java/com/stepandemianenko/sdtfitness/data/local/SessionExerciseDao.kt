@@ -15,21 +15,38 @@ interface SessionExerciseDao {
     @Query(
         """
         SELECT * FROM session_exercises
-        WHERE sessionId = :sessionId
+        WHERE accountId = :accountId
+          AND sessionId = :sessionId
         ORDER BY exerciseOrder ASC
         """
     )
-    suspend fun getForSession(sessionId: Long): List<SessionExerciseEntity>
+    suspend fun getForSession(accountId: String, sessionId: Long): List<SessionExerciseEntity>
 
     @Query(
         """
         SELECT * FROM session_exercises
-        WHERE sessionId = :sessionId
+        WHERE accountId = :accountId
+          AND sessionId = :sessionId
         ORDER BY exerciseOrder ASC
         """
     )
-    fun observeForSession(sessionId: Long): Flow<List<SessionExerciseEntity>>
+    fun observeForSession(accountId: String, sessionId: Long): Flow<List<SessionExerciseEntity>>
 
-    @Query("UPDATE session_exercises SET status = :status WHERE id = :sessionExerciseId")
-    suspend fun updateStatus(sessionExerciseId: Long, status: String)
+    @Query(
+        """
+        UPDATE session_exercises
+        SET status = :status, updatedAt = :updatedAt
+        WHERE accountId = :accountId
+          AND id = :sessionExerciseId
+        """
+    )
+    suspend fun updateStatus(
+        accountId: String,
+        sessionExerciseId: Long,
+        status: String,
+        updatedAt: Long
+    )
+
+    @Query("DELETE FROM session_exercises WHERE accountId = :accountId")
+    suspend fun deleteAllForAccount(accountId: String)
 }
