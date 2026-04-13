@@ -372,8 +372,8 @@ private fun BackToWorkoutButton(
         Text(
             text = "‹",
             color = ExercisesText,
-            fontSize = 24.sp,
-            lineHeight = 24.sp,
+            fontSize = 22.sp,
+            lineHeight = 22.sp,
             fontWeight = FontWeight.Medium
         )
         Text(

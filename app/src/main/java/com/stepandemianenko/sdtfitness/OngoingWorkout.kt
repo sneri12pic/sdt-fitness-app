@@ -42,6 +42,9 @@ class OngoingWorkout : ComponentActivity() {
                     },
                     onProgressClick = {
                         openProgressWithoutAnimation()
+                    },
+                    onProfileClick = {
+                        openProfileWithoutAnimation()
                     }
                 )
             }
@@ -50,6 +53,11 @@ class OngoingWorkout : ComponentActivity() {
 
     private fun openProgressWithoutAnimation() {
         startActivity(Intent(this, Progress::class.java))
+        overridePendingTransition(0, 0)
+    }
+
+    private fun openProfileWithoutAnimation() {
+        startActivity(Intent(this, Profile::class.java))
         overridePendingTransition(0, 0)
     }
 }

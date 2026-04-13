@@ -5,12 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.data.repository.SessionExerciseDraft
+import com.stepandemianenko.sdtfitness.home.HomeRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -29,9 +31,21 @@ class StartWorkoutViewModel(
     val effects: SharedFlow<StartWorkoutEffect> = _effects.asSharedFlow()
     private var lastDeletedExercise: DeletedExerciseSnapshot? = null
     private val workoutSessionRepository = AppGraph.workoutSessionRepository(application)
+    private val homeRepository = HomeRepository.getInstance(application)
 
     init {
         _uiState.value = StartWorkoutFakeStateProvider.emptyState()
+
+        viewModelScope.launch {
+            homeRepository.dashboardState.collect { dashboard ->
+                val streakDays = dashboard.currentStreakCount
+                _uiState.update { current ->
+                    current.copy(
+                        workoutPlan = current.workoutPlan?.withConsistencyStreak(streakDays)
+                    )
+                }
+            }
+        }
     }
 
     fun onEvent(event: StartWorkoutUiEvent) {
@@ -68,7 +82,11 @@ class StartWorkoutViewModel(
     }
 
     private fun loadDefaultPlan() {
-        _uiState.value = StartWorkoutFakeStateProvider.contentState()
+        val currentStreakDays = homeRepository.dashboardState.value.currentStreakCount
+        val contentState = StartWorkoutFakeStateProvider.contentState()
+        _uiState.value = contentState.copy(
+            workoutPlan = contentState.workoutPlan?.withConsistencyStreak(currentStreakDays)
+        )
     }
 
     private fun applyShortenedSession() {
@@ -280,10 +298,13 @@ class StartWorkoutViewModel(
 
             val basePlan = current.workoutPlan
                 ?: StartWorkoutFakeStateProvider.defaultPlan(isShortened = current.isSessionShortened)
+            val currentStreakDays = homeRepository.dashboardState.value.currentStreakCount
 
             current.copy(
                 isSelectingExercises = false,
-                workoutPlan = basePlan.copy(exercises = selectedExercises)
+                workoutPlan = basePlan
+                    .withConsistencyStreak(currentStreakDays)
+                    .copy(exercises = selectedExercises)
             )
         }
     }
@@ -385,5 +406,21 @@ class StartWorkoutViewModel(
             candidate = "${baseId}_$index"
         }
         return candidate
+    }
+
+    private fun WorkoutPlanUiModel.withConsistencyStreak(streakDays: Int): WorkoutPlanUiModel {
+        return copy(
+            streakCard = streakCard.copy(
+                title = formatConsistencyStreakTitle(streakDays)
+            )
+        )
+    }
+
+    private fun formatConsistencyStreakTitle(streakDays: Int): String {
+        return when {
+            streakDays <= 0 -> "0-day consistency streak"
+            streakDays == 1 -> "1-day consistency streak"
+            else -> "$streakDays-day consistency streak"
+        }
     }
 }

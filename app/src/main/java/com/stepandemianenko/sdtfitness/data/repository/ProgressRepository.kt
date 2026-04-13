@@ -6,8 +6,10 @@ import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionDao
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionEntity
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionStatus
 import java.time.Instant
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.TemporalAdjusters
 
 data class ProgressSummary(
     val completedSessions: Int,
@@ -20,13 +22,53 @@ data class ProgressSummary(
     val totalVolumeKg: Double,
     val bestLiftKg: Int,
     val topExerciseName: String?,
-    val topExerciseVolumeKg: Double?
+    val topExerciseVolumeKg: Double?,
+    val latestSessionCompletedToday: Boolean,
+    val latestSessionVolumeKg: Double,
+    val latestSessionSets: Int,
+    val latestSessionReps: Int
+)
+
+data class CompletedSessionHistoryItem(
+    val sessionId: Long,
+    val templateId: String?,
+    val completedAtMillis: Long,
+    val exerciseCount: Int,
+    val totalSets: Int,
+    val totalReps: Int,
+    val totalVolumeKg: Double
+)
+
+data class CompletedSessionsHistory(
+    val sessions: List<CompletedSessionHistoryItem>,
+    val sessionsThisWeek: Int,
+    val sessionsLastWeek: Int
+)
+
+data class SessionSetReview(
+    val setNumber: Int,
+    val actualWeightKg: Int,
+    val actualReps: Int
+)
+
+data class SessionExerciseReview(
+    val exerciseId: String,
+    val exerciseName: String,
+    val sets: List<SessionSetReview>
+)
+
+data class CompletedSessionReview(
+    val sessionId: Long,
+    val templateId: String?,
+    val completedAtMillis: Long,
+    val exercises: List<SessionExerciseReview>
 )
 
 class ProgressRepository(
     private val database: WorkoutDatabase
 ) {
     private val sessionDao: WorkoutSessionDao = database.workoutSessionDao()
+    private val exerciseDao = database.sessionExerciseDao()
     private val setLogDao: SessionSetLogDao = database.sessionSetLogDao()
 
     suspend fun getSummary(now: LocalDate = LocalDate.now()): ProgressSummary {
@@ -47,6 +89,8 @@ class ProgressRepository(
         val previous7DaySessions = sessionDates.count { !it.isBefore(previous7Start) && !it.isAfter(previous7End) }
 
         val topExercise = setLogDao.getTopExerciseByVolume(completedStatus = WorkoutSessionStatus.COMPLETED)
+        val latestCompletedSession = completedSessions.maxByOrNull { it.completedAt ?: it.startedAt }
+        val latestSessionCompletedToday = latestCompletedSession?.toLocalDate() == now
 
         return ProgressSummary(
             completedSessions = totals.completedSessions,
@@ -59,7 +103,83 @@ class ProgressRepository(
             totalVolumeKg = totals.totalVolume,
             bestLiftKg = totals.bestLiftKg,
             topExerciseName = topExercise?.exerciseName,
-            topExerciseVolumeKg = topExercise?.totalVolume
+            topExerciseVolumeKg = topExercise?.totalVolume,
+            latestSessionCompletedToday = latestSessionCompletedToday,
+            latestSessionVolumeKg = latestCompletedSession?.totalVolumeCompleted ?: 0.0,
+            latestSessionSets = latestCompletedSession?.totalSetsCompleted ?: 0,
+            latestSessionReps = latestCompletedSession?.totalRepsCompleted ?: 0
+        )
+    }
+
+    suspend fun getCompletedSessionsHistory(now: LocalDate = LocalDate.now()): CompletedSessionsHistory {
+        val sessions = sessionDao.getByStatus(status = WorkoutSessionStatus.COMPLETED)
+            .sortedByDescending { it.completedAt ?: it.startedAt }
+
+        val weekStart = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val nextWeekStart = weekStart.plusDays(7)
+        val lastWeekStart = weekStart.minusDays(7)
+
+        val sessionsThisWeek = sessions.count { session ->
+            val date = session.toLocalDate()
+            !date.isBefore(weekStart) && date.isBefore(nextWeekStart)
+        }
+
+        val sessionsLastWeek = sessions.count { session ->
+            val date = session.toLocalDate()
+            !date.isBefore(lastWeekStart) && date.isBefore(weekStart)
+        }
+
+        val historyItems = sessions.map { session ->
+            val exerciseCount = exerciseDao.getForSession(session.id).size
+            CompletedSessionHistoryItem(
+                sessionId = session.id,
+                templateId = session.templateId,
+                completedAtMillis = session.completedAt ?: session.startedAt,
+                exerciseCount = exerciseCount,
+                totalSets = session.totalSetsCompleted,
+                totalReps = session.totalRepsCompleted,
+                totalVolumeKg = session.totalVolumeCompleted
+            )
+        }
+
+        return CompletedSessionsHistory(
+            sessions = historyItems,
+            sessionsThisWeek = sessionsThisWeek,
+            sessionsLastWeek = sessionsLastWeek
+        )
+    }
+
+    suspend fun getCompletedSessionReview(sessionId: Long): CompletedSessionReview? {
+        val session = sessionDao.getById(sessionId) ?: return null
+        if (session.status != WorkoutSessionStatus.COMPLETED) return null
+
+        val exercises = exerciseDao.getForSession(sessionId).sortedBy { it.exerciseOrder }
+        val setLogsByExercise = setLogDao.getForSession(sessionId)
+            .groupBy { it.sessionExerciseId }
+
+        val exerciseReviews = exercises.map { exercise ->
+            val sets = setLogsByExercise[exercise.id]
+                .orEmpty()
+                .sortedBy { it.setNumber }
+                .map { set ->
+                    SessionSetReview(
+                        setNumber = set.setNumber,
+                        actualWeightKg = set.actualWeightKg,
+                        actualReps = set.actualReps
+                    )
+                }
+            SessionExerciseReview(
+                exerciseId = exercise.exerciseId,
+                exerciseName = exercise.exerciseName,
+                sets = sets
+            )
+        }
+
+        return CompletedSessionReview(
+            sessionId = session.id,
+            templateId = session.templateId,
+            completedAtMillis = session.completedAt ?: session.startedAt,
+            exercises = exerciseReviews
         )
     }
 

@@ -254,15 +254,23 @@ class ProgressViewModel(
             completedSessions = completedSessions,
             workoutDays = workoutDays,
             streakDays = streakDays,
-            consistencyTitle = "$completedSessions Completed Sessions",
+            consistencyTitle = "$completedSessions Sessions",
             consistencySubtitle = weeklyDeltaText,
             streakSubtitle = if (streakDays > 0) "$streakDays-day continuity" else "No streak yet",
             bestLiftValue = if (bestLiftKg > 0) "$bestLiftKg kg" else "No lift logged",
             bestLiftSubtitle = "Heaviest completed set",
             volumeValue = "${formatWhole(totalVolumeKg)} kg",
-            volumeSubtitle = "Across completed sessions",
+            volumeSubtitle = if (latestSessionCompletedToday) {
+                "+${formatWhole(latestSessionVolumeKg)} kg today"
+            } else {
+                "Across completed sessions"
+            },
             personalBestsValue = "$totalSets sets logged",
-            personalBestsSubtitle = "$totalReps reps total",
+            personalBestsSubtitle = if (latestSessionCompletedToday) {
+                formatSessionLoadDeltaText(latestSessionSets)
+            } else {
+                "$totalReps reps total"
+            },
             topExerciseText = topExerciseName?.let {
                 val topVolume = topExerciseVolumeKg?.let(::formatWhole) ?: "0"
                 "$it ($topVolume kg)"
@@ -270,6 +278,10 @@ class ProgressViewModel(
             sessionsLast7Days = last7DaySessions,
             sessionsPrevious7Days = previous7DaySessions
         )
+    }
+
+    private fun formatSessionLoadDeltaText(sessionSets: Int): String {
+        return if (sessionSets > 0) "+$sessionSets sets today" else "Completed today"
     }
 
     private fun formatWhole(value: Double): String {

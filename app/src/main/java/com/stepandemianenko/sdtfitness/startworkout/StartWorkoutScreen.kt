@@ -296,6 +296,7 @@ fun StartWorkoutScreen(
                 StartWorkoutEmptyState(
                     onRetryClick = onRetryClick,
                     onAddExerciseClick = onAddExerciseClick,
+                    onBackClick = onBackClick,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -334,7 +335,7 @@ fun StartWorkoutScreen(
                     item {
                         SelectedWorkoutCard(
                             title = plan.selectedWorkoutsTitle,
-                            durationText = plan.estimatedDurationText,
+                            durationText = plan.actualEstimatedDurationText(),
                             badge = plan.selectedWorkoutBadge,
                             exercises = plan.exercises,
                             onEditClick = onEditWorkoutClick,
@@ -406,22 +407,32 @@ private fun WorkoutStreakCard(
         shape = RoundedCornerShape(StartWorkoutDimens.CardCorner),
         color = StartWorkoutCardBackground
     ) {
-        Column(modifier = Modifier.padding(StartWorkoutDimens.CardContentPadding)) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = StartWorkoutDimens.CardContentPadding + 2.dp,
+                vertical = StartWorkoutDimens.CardContentPadding
+            )
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
+                        .size(50.dp)
                         .clip(CircleShape)
-                        .background(StartWorkoutPrimary.copy(alpha = 0.32f)),
+                        .background(StartWorkoutPrimary.copy(alpha = 0.22f))
+                        .border(
+                            width = 1.dp,
+                            color = StartWorkoutDivider.copy(alpha = 0.65f),
+                            shape = CircleShape
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.start_workout_streak_icon),
                         contentDescription = null,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(28.dp)
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -430,55 +441,85 @@ private fun WorkoutStreakCard(
                         style = MaterialTheme.typography.titleMedium.copy(
                             color = StartWorkoutPrimaryText,
                             fontWeight = FontWeight.Bold,
-                            fontSize = StartWorkoutDimens.BodyTextSize
+                            fontSize = 18.sp,
+                            lineHeight = 20.sp
                         )
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = streakInfo.subtitle,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = StartWorkoutSecondaryText,
-                                fontSize = StartWorkoutDimens.BodyTextSize
-                            )
-                        )
-                    }
-                }
-                streakInfo.badge?.let {
-                    BadgeChip(
-                        badge = it,
+                    Text(
+                        text = streakInfo.subtitle,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = StartWorkoutSecondaryText,
+                            fontSize = StartWorkoutDimens.CaptionTextSize,
+                            lineHeight = 16.sp
+                        ),
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
+                streakInfo.badge?.let {
+                    StreakGoalChip(
+                        text = it.text,
+                        modifier = Modifier.align(Alignment.Top)
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Spacer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(StartWorkoutDivider)
+                    .background(StartWorkoutDivider.copy(alpha = 0.6f))
             )
             Row(
-                modifier = Modifier.padding(top = 10.dp),
+                modifier = Modifier
+                    .padding(top = 10.dp)
+                    .padding(start = 62.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.start_workout_icon_empty_ellipse),
                     contentDescription = null,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.dp)
                 )
                 Text(
                     text = basedOnPlanText,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = StartWorkoutPrimaryText,
-                        fontSize = StartWorkoutDimens.BodyTextSize
-                    )
+                        color = StartWorkoutSecondaryText,
+                        fontSize = StartWorkoutDimens.CaptionTextSize,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun StreakGoalChip(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(StartWorkoutBadge.copy(alpha = 0.2f))
+            .border(
+                width = 1.dp,
+                color = StartWorkoutBadge.copy(alpha = 0.42f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = StartWorkoutBadgeText,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp
+            )
+        )
     }
 }
 
@@ -769,16 +810,26 @@ private fun EditableTargetChip(
             .clip(RoundedCornerShape(8.dp))
             .border(1.dp, StartWorkoutDivider, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
-        Text(
-            text = "$label: $value",
-            style = MaterialTheme.typography.bodySmall.copy(
-                color = StartWorkoutPrimaryText,
-                fontWeight = FontWeight.Medium,
-                fontSize = StartWorkoutDimens.CaptionTextSize
+        Column {
+            Text(
+                text = "$label:",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = StartWorkoutPrimaryText,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = StartWorkoutDimens.CaptionTextSize
+                )
             )
-        )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = StartWorkoutPrimaryText,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = StartWorkoutDimens.CaptionTextSize
+                )
+            )
+        }
     }
 }
 
@@ -1010,17 +1061,40 @@ private fun StartWorkoutLoadingState(
 private fun StartWorkoutEmptyState(
     onRetryClick: () -> Unit,
     onAddExerciseClick: () -> Unit,
+    onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .clickable(onClick = onBackClick)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "‹",
+                color = StartWorkoutPrimaryText,
+                fontSize = 22.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "Back to Home",
+                color = StartWorkoutSecondaryText,
+                fontSize = 14.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
         Surface(
             shape = RoundedCornerShape(StartWorkoutDimens.EmptyStateCorner),
             color = StartWorkoutCardBackground,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.Center)
         ) {
             Column(
                 modifier = Modifier.padding(18.dp),
@@ -1288,7 +1362,7 @@ private fun StartWorkoutScreenEmptyPreview() {
 private fun WorkoutStreakCardPreview() {
     WorkoutStreakCard(
         streakInfo = StartWorkoutFakeStateProvider.defaultPlan(isShortened = false).streakCard,
-        basedOnPlanText = "Based on your Upper Body plan"
+        basedOnPlanText = "From your Upper Body plan"
     )
 }
 
@@ -1298,7 +1372,7 @@ private fun SelectedWorkoutCardPreview() {
     val plan = StartWorkoutFakeStateProvider.defaultPlan(isShortened = false)
     SelectedWorkoutCard(
         title = plan.selectedWorkoutsTitle,
-        durationText = plan.estimatedDurationText,
+        durationText = plan.actualEstimatedDurationText(),
         badge = plan.selectedWorkoutBadge,
         exercises = plan.exercises,
         onEditClick = {},

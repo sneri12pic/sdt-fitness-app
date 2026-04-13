@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,6 +46,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -62,7 +65,9 @@ class Progress : ComponentActivity() {
             MaterialTheme {
                 ProgressRoute(
                     onHomeClick = { openHomeWithoutAnimation() },
-                    onWorkoutClick = { openWorkoutWithoutAnimation() }
+                    onWorkoutClick = { openWorkoutWithoutAnimation() },
+                    onProfileClick = { openProfileWithoutAnimation() },
+                    onCompletedSessionsClick = { openCompletedSessionsWithoutAnimation() }
                 )
             }
         }
@@ -75,6 +80,16 @@ class Progress : ComponentActivity() {
 
     private fun openWorkoutWithoutAnimation() {
         startActivity(Intent(this, StartWorkout::class.java))
+        overridePendingTransition(0, 0)
+    }
+
+    private fun openCompletedSessionsWithoutAnimation() {
+        startActivity(CompletedSessions.createIntent(this))
+        overridePendingTransition(0, 0)
+    }
+
+    private fun openProfileWithoutAnimation() {
+        startActivity(Intent(this, Profile::class.java))
         overridePendingTransition(0, 0)
     }
 }
@@ -102,6 +117,7 @@ fun ProgressRoute(
     onHomeClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
+    onCompletedSessionsClick: () -> Unit = {},
     viewModel: ProgressViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -144,7 +160,8 @@ fun ProgressRoute(
         onRefreshHealthConnectClick = viewModel::refreshHealthConnectData,
         onHomeClick = onHomeClick,
         onWorkoutClick = onWorkoutClick,
-        onProfileClick = onProfileClick
+        onProfileClick = onProfileClick,
+        onCompletedSessionsClick = onCompletedSessionsClick
     )
 }
 
@@ -156,7 +173,8 @@ fun ProgressScreen(
     onRefreshHealthConnectClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
-    onProfileClick: () -> Unit = {}
+    onProfileClick: () -> Unit = {},
+    onCompletedSessionsClick: () -> Unit = {}
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -179,6 +197,7 @@ fun ProgressScreen(
                         onConnectHealthConnectClick = onConnectHealthConnectClick,
                         onOpenHealthConnectSettingsClick = onOpenHealthConnectSettingsClick,
                         onRefreshHealthConnectClick = onRefreshHealthConnectClick,
+                        onCompletedSessionsClick = onCompletedSessionsClick,
                         modifier = Modifier
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
@@ -208,6 +227,7 @@ private fun ProgressContent(
     onConnectHealthConnectClick: () -> Unit,
     onOpenHealthConnectSettingsClick: () -> Unit,
     onRefreshHealthConnectClick: () -> Unit,
+    onCompletedSessionsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -224,16 +244,18 @@ private fun ProgressContent(
             )
         }
         SectionTitle(title = "Consistency")
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             ConsistencyCard(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 iconRes = R.drawable.start_workout_streak_icon,
                 title = uiState.consistencyTitle,
                 subtitle = uiState.consistencySubtitle,
-                badge = "Completed"
+                onClick = onCompletedSessionsClick
             )
             ConsistencyCard(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 iconRes = R.drawable.calendar_streak_consistency,
                 title = "${uiState.workoutDays} Workout Days",
                 subtitle = uiState.streakSubtitle
@@ -242,9 +264,14 @@ private fun ProgressContent(
 
         SectionTitle(title = "Mastery")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 MasteryCard(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                     title = "Best Lift",
                     value = uiState.bestLiftValue,
                     subtitle = uiState.bestLiftSubtitle,
@@ -252,7 +279,9 @@ private fun ProgressContent(
                     iconRes = R.drawable.trophy_star
                 )
                 MasteryCard(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                     title = "Volume",
                     value = uiState.volumeValue,
                     subtitle = uiState.volumeSubtitle,
@@ -463,17 +492,23 @@ private fun ConsistencyCard(
     iconRes: Int,
     title: String,
     subtitle: String,
-    badge: String? = null
+    onClick: (() -> Unit)? = null
 ) {
+    val clickableModifier = if (onClick != null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier
+    }
+
     ProgressCard(
-        modifier = modifier,
-        minHeight = 112.dp
+        modifier = modifier.then(clickableModifier),
+        minHeight = 86.dp
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            IconTile(iconRes = iconRes, tileSize = 60.dp, iconSize = 34.dp)
+            IconTile(iconRes = iconRes, tileSize = 52.dp, iconSize = 30.dp)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -485,9 +520,6 @@ private fun ConsistencyCard(
                     fontSize = 13.sp,
                     lineHeight = 13.sp
                 )
-                if (badge != null) {
-                    BadgeChip(text = badge)
-                }
             }
         }
     }
@@ -560,16 +592,23 @@ private fun OutcomeCard(
 ) {
     ProgressCard(
         modifier = modifier,
-        minHeight = 124.dp
+        minHeight = 118.dp
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            IconTile(iconRes = iconRes, tileSize = 62.dp, iconSize = 42.dp)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                IconTile(iconRes = iconRes, tileSize = 62.dp, iconSize = 42.dp)
+                BadgeChip(text = badge)
+            }
             Column(
                 modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
@@ -577,22 +616,24 @@ private fun OutcomeCard(
                     color = ProgressPrimaryText,
                     fontSize = 15.sp,
                     lineHeight = 15.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
                 )
                 Text(
                     text = value,
                     color = ProgressPrimaryText,
                     fontSize = 13.sp,
                     lineHeight = 13.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
                 )
                 Text(
                     text = subtitle,
                     color = ProgressPositive,
                     fontSize = 13.sp,
-                    lineHeight = 13.sp
+                    lineHeight = 13.sp,
+                    textAlign = TextAlign.Center
                 )
-                BadgeChip(text = badge)
             }
         }
     }

@@ -82,6 +82,23 @@ data class WorkoutMiniPlayerUiModel(
     val subtitle: String
 )
 
+private val estimatedMinutesRegex = Regex("(\\d+)\\s*min", RegexOption.IGNORE_CASE)
+
+fun WorkoutPlanUiModel.actualEstimatedDurationText(): String {
+    if (exercises.isEmpty()) return "0 min"
+
+    val totalMinutes = exercises.sumOf { exercise ->
+        estimatedMinutesRegex
+            .find(exercise.estimatedTimeText)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+            ?: 0
+    }
+
+    return if (totalMinutes > 0) "$totalMinutes min" else estimatedDurationText
+}
+
 sealed interface StartWorkoutUiEvent {
     data object RetryLoad : StartWorkoutUiEvent
     data object BackClick : StartWorkoutUiEvent
@@ -225,11 +242,11 @@ object StartWorkoutFakeStateProvider {
             headerTitle = "Ready to train?",
             headerSubtitle = "Choose your exercises and start when you're ready",
             streakCard = WorkoutInfoCardUiModel(
-                title = "Workout Streak : 7 days",
-                subtitle = "Today's XP goal : 120 xp",
-                badge = WorkoutBadgeUiModel(text = "+ 120 xp")
+                title = "7-day consistency streak",
+                subtitle = "Today's goal: 120 XP",
+                badge = WorkoutBadgeUiModel(text = "+120 XP")
             ),
-            basedOnPlanText = "Based on your Upper Body plan",
+            basedOnPlanText = "From your Upper Body plan",
             selectedWorkoutsTitle = "Selected Workouts",
             estimatedDurationText = if (isShortened) "20 min" else "50 min",
             selectedWorkoutBadge = WorkoutBadgeUiModel(text = "+ 90 xp"),
