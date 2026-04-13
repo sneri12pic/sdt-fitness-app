@@ -260,15 +260,29 @@ private fun WorkoutTopBar(
             .widthIn(max = 354.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "<-",
-            color = WorkoutText,
-            fontSize = 24.sp,
+        Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(onClick = onBackClick)
-                .padding(2.dp)
-        )
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "‹",
+                color = WorkoutText,
+                fontSize = 22.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "back",
+                color = WorkoutText,
+                fontSize = 15.sp,
+                lineHeight = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
         Spacer(modifier = Modifier.width(10.dp))
         Column(
             modifier = Modifier.weight(1f),
@@ -354,12 +368,11 @@ private fun TargetCard(
                     .background(WorkoutGreen),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "v",
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    lineHeight = 15.sp,
-                    fontWeight = FontWeight.Bold
+                Image(
+                    painter = painterResource(id = R.drawable.check_mark),
+                    contentDescription = null,
+                    modifier = Modifier.size(11.dp, 9.dp),
+                    contentScale = ContentScale.Fit
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
@@ -839,13 +852,22 @@ private fun SetProgressLine(
                     .background(nodeColor),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (index <= completedSets) "v" else index.toString(),
-                    color = textColor,
-                    fontSize = 11.sp,
-                    lineHeight = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                if (index <= completedSets) {
+                    Image(
+                        painter = painterResource(id = R.drawable.check_mark),
+                        contentDescription = null,
+                        modifier = Modifier.size(11.dp, 9.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Text(
+                        text = index.toString(),
+                        color = textColor,
+                        fontSize = 11.sp,
+                        lineHeight = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             if (index < totalSets) {
                 Box(
