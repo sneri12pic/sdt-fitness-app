@@ -32,6 +32,11 @@ class OngoingWorkout : ComponentActivity() {
                 OngoingWorkoutRoute(
                     initialSessionId = activeSessionId,
                     onBackClick = { finish() },
+                    onNavigateToStartWorkout = {
+                        startActivity(StartWorkout.createIntent(this))
+                        overridePendingTransition(0, 0)
+                        finish()
+                    },
                     onTimerClick = {},
                     onAddExerciseClick = { openStartWorkoutWithoutAnimation() },
                     onLogSetClick = { _, _, _ -> },

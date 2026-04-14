@@ -89,6 +89,10 @@ sealed interface LogWorkoutUiEvent {
     data object OnBackClicked : LogWorkoutUiEvent
     data object OnFinishWorkoutClicked : LogWorkoutUiEvent
     data class OnToggleSetCompleted(val exerciseId: Long, val setId: String) : LogWorkoutUiEvent
+    data class OnDeleteSet(val exerciseId: Long, val setId: String) : LogWorkoutUiEvent
+    data class OnDeleteExercise(val exerciseId: Long) : LogWorkoutUiEvent
+    data object OnUndoLastDeletion : LogWorkoutUiEvent
+    data class OnDeletionSnackbarResult(val actionPerformed: Boolean) : LogWorkoutUiEvent
     data class OnAddSet(val exerciseId: Long) : LogWorkoutUiEvent
     data object OnAddExercise : LogWorkoutUiEvent
     data class OnUpdateSetWeight(val exerciseId: Long, val setId: String, val weight: String) : LogWorkoutUiEvent
@@ -107,9 +111,13 @@ sealed interface LogWorkoutUiEvent {
 
 sealed interface LogWorkoutEffect {
     data class NavigateToProgress(val sessionId: Long) : LogWorkoutEffect
+    data object NavigateToStartWorkout : LogWorkoutEffect
     data object OpenAddExercise : LogWorkoutEffect
     data object OpenRestTimer : LogWorkoutEffect
-    data class ShowSnackbar(val message: String) : LogWorkoutEffect
+    data class ShowSnackbar(
+        val message: String,
+        val actionLabel: String? = null
+    ) : LogWorkoutEffect
     data object CloseAfterDiscard : LogWorkoutEffect
 }
 

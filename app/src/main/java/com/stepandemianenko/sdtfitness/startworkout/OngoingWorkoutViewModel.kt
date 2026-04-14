@@ -10,6 +10,8 @@ import com.stepandemianenko.sdtfitness.data.repository.LogSetOutcome
 import com.stepandemianenko.sdtfitness.data.repository.LoggedSetUpdateDraft
 import com.stepandemianenko.sdtfitness.data.repository.LogWorkoutExerciseSnapshot
 import com.stepandemianenko.sdtfitness.data.repository.LogWorkoutSessionSnapshot
+import com.stepandemianenko.sdtfitness.data.repository.RestoreExerciseDraft
+import com.stepandemianenko.sdtfitness.data.repository.RestoreSetLogDraft
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +33,31 @@ class LogWorkoutViewModel(
         val weight: String,
         val reps: String
     )
+
+    private sealed interface PendingDeletion {
+        data class SetDeletion(
+            val sessionId: Long,
+            val exerciseId: Long,
+            val setNumber: Int,
+            val draft: SetInputDraft?,
+            val selectedRpe: Int?,
+            val feedbackMessage: String?,
+            val wasActiveFeedback: Boolean,
+            val restorableLog: RestoreSetLogDraft?
+        ) : PendingDeletion
+
+        data class ExerciseDeletion(
+            val sessionId: Long,
+            val exerciseId: Long,
+            val restoreExerciseDraft: RestoreExerciseDraft,
+            val drafts: Map<String, SetInputDraft>,
+            val selectedRpe: Map<String, Int>,
+            val feedbackMessages: Map<String, String>,
+            val activeFeedbackSetKey: String?,
+            val restTimerEnabled: Boolean,
+            val pendingSuggestedWeight: Int?
+        ) : PendingDeletion
+    }
 
     private val repository = AppGraph.workoutSessionRepository(application)
     private val homeRepository = AppGraph.homeRepository(application)
@@ -66,6 +93,8 @@ class LogWorkoutViewModel(
     private var activeFeedbackSetKey: String? = null
     private var feedbackMessageBySet: Map<String, String> = emptyMap()
     private var feedbackAutoDismissJob: Job? = null
+    private var pendingDeletion: PendingDeletion? = null
+    private var shouldNavigateToStartAfterDeletion: Boolean = false
 
     fun attachSession(initialSessionId: Long?) {
         if (didAttachSession) return
@@ -106,9 +135,9 @@ class LogWorkoutViewModel(
                         snapshot.status == WorkoutSessionStatus.COMPLETED &&
                         completionEffectSessionId != snapshot.sessionId
                     ) {
-                        completionEffectSessionId = snapshot.sessionId
                         homeRepository.setTodayWorkoutCompleted(completed = true)
                         _effects.emit(LogWorkoutEffect.NavigateToProgress(snapshot.sessionId))
+                        completionEffectSessionId = snapshot.sessionId
                     }
                 }
             }
@@ -122,6 +151,15 @@ class LogWorkoutViewModel(
             is LogWorkoutUiEvent.OnToggleSetCompleted -> toggleSetCompleted(
                 exerciseId = event.exerciseId,
                 setId = event.setId
+            )
+            is LogWorkoutUiEvent.OnDeleteSet -> deleteSet(
+                exerciseId = event.exerciseId,
+                setId = event.setId
+            )
+            is LogWorkoutUiEvent.OnDeleteExercise -> deleteExercise(exerciseId = event.exerciseId)
+            LogWorkoutUiEvent.OnUndoLastDeletion -> undoLastDeletion()
+            is LogWorkoutUiEvent.OnDeletionSnackbarResult -> handleDeletionSnackbarResult(
+                actionPerformed = event.actionPerformed
             )
             is LogWorkoutUiEvent.OnAddSet -> addSet(exerciseId = event.exerciseId)
             LogWorkoutUiEvent.OnAddExercise -> openAddExercise()
@@ -159,9 +197,9 @@ class LogWorkoutViewModel(
         val sessionId = latestSnapshot?.sessionId ?: return
         viewModelScope.launch {
             if (repository.completeSession(sessionId)) {
-                completionEffectSessionId = sessionId
                 homeRepository.setTodayWorkoutCompleted(completed = true)
                 _effects.emit(LogWorkoutEffect.NavigateToProgress(sessionId))
+                completionEffectSessionId = sessionId
             }
         }
     }
@@ -240,22 +278,308 @@ class LogWorkoutViewModel(
         }
     }
 
+    private fun deleteSet(exerciseId: Long, setId: String) {
+        val snapshot = latestSnapshot ?: return
+        val setNumber = parseSetNumber(setId) ?: return
+        val exercise = snapshot.exercises.firstOrNull { it.id == exerciseId } ?: return
+
+        val removedKey = buildSetKey(exerciseId = exerciseId, setNumber = setNumber)
+        val loggedSet = exercise.loggedSets.firstOrNull { it.setNumber == setNumber }
+        val deletedSet = PendingDeletion.SetDeletion(
+            sessionId = snapshot.sessionId,
+            exerciseId = exerciseId,
+            setNumber = setNumber,
+            draft = setInputDrafts[removedKey],
+            selectedRpe = selectedRpeBySet[removedKey],
+            feedbackMessage = feedbackMessageBySet[removedKey],
+            wasActiveFeedback = activeFeedbackSetKey == removedKey,
+            restorableLog = loggedSet?.let {
+                RestoreSetLogDraft(
+                    id = it.id,
+                    setNumber = it.setNumber,
+                    actualWeightKg = it.actualWeightKg,
+                    actualReps = it.actualReps,
+                    rpe = it.rpe
+                )
+            }
+        )
+
+        viewModelScope.launch {
+            val removed = repository.removeSetFromExercise(
+                sessionId = snapshot.sessionId,
+                sessionExerciseId = exercise.id,
+                setNumber = setNumber
+            )
+            if (!removed) {
+                _effects.emit(
+                    LogWorkoutEffect.ShowSnackbar(
+                        message = "Couldn't delete this set right now."
+                    )
+                )
+                return@launch
+            }
+
+            setInputDrafts = shiftSetScopedMapDown(
+                source = setInputDrafts,
+                exerciseId = exerciseId,
+                removedSetNumber = setNumber
+            )
+            selectedRpeBySet = shiftSetScopedMapDown(
+                source = selectedRpeBySet,
+                exerciseId = exerciseId,
+                removedSetNumber = setNumber
+            )
+            feedbackMessageBySet = shiftSetScopedMapDown(
+                source = feedbackMessageBySet,
+                exerciseId = exerciseId,
+                removedSetNumber = setNumber
+            )
+            shiftActiveFeedbackAfterSetDeletion(
+                exerciseId = exerciseId,
+                removedSetNumber = setNumber
+            )
+
+            pendingDeletion = deletedSet
+            rebuildUiState()
+            _effects.emit(
+                LogWorkoutEffect.ShowSnackbar(
+                    message = "Set deleted",
+                    actionLabel = "Undo"
+                )
+            )
+        }
+    }
+
+    private fun deleteExercise(exerciseId: Long) {
+        val snapshot = latestSnapshot ?: return
+        val exercise = snapshot.exercises.firstOrNull { it.id == exerciseId } ?: return
+        val wasLastExercise = snapshot.exercises.size == 1
+        val exerciseKeyPrefix = "$exerciseId:"
+        val deletedExercise = PendingDeletion.ExerciseDeletion(
+            sessionId = snapshot.sessionId,
+            exerciseId = exerciseId,
+            restoreExerciseDraft = RestoreExerciseDraft(
+                id = exercise.id,
+                exerciseId = exercise.exerciseId,
+                exerciseName = exercise.exerciseName,
+                exerciseOrder = exercise.exerciseOrder,
+                targetSets = exercise.targetSets,
+                targetReps = exercise.targetReps,
+                targetWeightKg = exercise.targetWeightKg,
+                loggedSets = exercise.loggedSets.map { loggedSet ->
+                    RestoreSetLogDraft(
+                        id = loggedSet.id,
+                        setNumber = loggedSet.setNumber,
+                        actualWeightKg = loggedSet.actualWeightKg,
+                        actualReps = loggedSet.actualReps,
+                        rpe = loggedSet.rpe
+                    )
+                }
+            ),
+            drafts = setInputDrafts.filterKeys { key -> key.startsWith(exerciseKeyPrefix) },
+            selectedRpe = selectedRpeBySet.filterKeys { key -> key.startsWith(exerciseKeyPrefix) },
+            feedbackMessages = feedbackMessageBySet.filterKeys { key -> key.startsWith(exerciseKeyPrefix) },
+            activeFeedbackSetKey = activeFeedbackSetKey?.takeIf { key ->
+                key.startsWith(exerciseKeyPrefix)
+            },
+            restTimerEnabled = restTimerEnabledExerciseIds.contains(exerciseId),
+            pendingSuggestedWeight = pendingSuggestedWeightByExercise[exerciseId]
+        )
+
+        viewModelScope.launch {
+            val removed = repository.removeExerciseFromSession(
+                sessionId = snapshot.sessionId,
+                sessionExerciseId = exercise.id
+            )
+            if (!removed) {
+                _effects.emit(
+                    LogWorkoutEffect.ShowSnackbar(
+                        message = "Couldn't delete this exercise right now."
+                    )
+                )
+                return@launch
+            }
+
+            setInputDrafts = setInputDrafts.filterKeys { key -> !key.startsWith(exerciseKeyPrefix) }
+            selectedRpeBySet = selectedRpeBySet.filterKeys { key -> !key.startsWith(exerciseKeyPrefix) }
+            feedbackMessageBySet = feedbackMessageBySet.filterKeys { key -> !key.startsWith(exerciseKeyPrefix) }
+            if (activeFeedbackSetKey?.startsWith(exerciseKeyPrefix) == true) {
+                activeFeedbackSetKey = null
+                feedbackAutoDismissJob?.cancel()
+                feedbackAutoDismissJob = null
+            }
+            restTimerEnabledExerciseIds = restTimerEnabledExerciseIds - exerciseId
+            pendingSuggestedWeightByExercise = pendingSuggestedWeightByExercise - exerciseId
+
+            pendingDeletion = deletedExercise
+            shouldNavigateToStartAfterDeletion = wasLastExercise
+            rebuildUiState()
+            _effects.emit(
+                LogWorkoutEffect.ShowSnackbar(
+                    message = "${exercise.exerciseName} deleted",
+                    actionLabel = "Undo"
+                )
+            )
+        }
+    }
+
+    private fun undoLastDeletion() {
+        val deletion = pendingDeletion ?: return
+        shouldNavigateToStartAfterDeletion = false
+        viewModelScope.launch {
+            when (deletion) {
+                is PendingDeletion.SetDeletion -> {
+                    val restored = repository.restoreSetInExercise(
+                        sessionId = deletion.sessionId,
+                        sessionExerciseId = deletion.exerciseId,
+                        setNumber = deletion.setNumber,
+                        restoredLog = deletion.restorableLog
+                    )
+                    if (!restored) {
+                        _effects.emit(
+                            LogWorkoutEffect.ShowSnackbar(
+                                message = "Couldn't restore deleted set."
+                            )
+                        )
+                        return@launch
+                    }
+
+                    setInputDrafts = shiftSetScopedMapUp(
+                        source = setInputDrafts,
+                        exerciseId = deletion.exerciseId,
+                        insertedSetNumber = deletion.setNumber
+                    )
+                    selectedRpeBySet = shiftSetScopedMapUp(
+                        source = selectedRpeBySet,
+                        exerciseId = deletion.exerciseId,
+                        insertedSetNumber = deletion.setNumber
+                    )
+                    feedbackMessageBySet = shiftSetScopedMapUp(
+                        source = feedbackMessageBySet,
+                        exerciseId = deletion.exerciseId,
+                        insertedSetNumber = deletion.setNumber
+                    )
+                    shiftActiveFeedbackAfterSetRestore(
+                        exerciseId = deletion.exerciseId,
+                        insertedSetNumber = deletion.setNumber
+                    )
+
+                    val restoredKey = buildSetKey(
+                        exerciseId = deletion.exerciseId,
+                        setNumber = deletion.setNumber
+                    )
+                    deletion.draft?.let { draft ->
+                        setInputDrafts = setInputDrafts + (restoredKey to draft)
+                    }
+                    deletion.selectedRpe?.let { selectedRpe ->
+                        selectedRpeBySet = selectedRpeBySet + (restoredKey to selectedRpe)
+                    }
+                    deletion.feedbackMessage?.let { feedbackMessage ->
+                        feedbackMessageBySet = feedbackMessageBySet + (restoredKey to feedbackMessage)
+                        if (deletion.wasActiveFeedback) {
+                            activeFeedbackSetKey = restoredKey
+                            scheduleFeedbackAutoDismiss(restoredKey)
+                        }
+                    }
+                }
+
+                is PendingDeletion.ExerciseDeletion -> {
+                    val restored = repository.restoreExerciseToSession(
+                        sessionId = deletion.sessionId,
+                        restoreDraft = deletion.restoreExerciseDraft
+                    )
+                    if (!restored) {
+                        _effects.emit(
+                            LogWorkoutEffect.ShowSnackbar(
+                                message = "Couldn't restore deleted exercise."
+                            )
+                        )
+                        return@launch
+                    }
+
+                    setInputDrafts = setInputDrafts + deletion.drafts
+                    selectedRpeBySet = selectedRpeBySet + deletion.selectedRpe
+                    feedbackMessageBySet = feedbackMessageBySet + deletion.feedbackMessages
+                    deletion.activeFeedbackSetKey?.let { restoredKey ->
+                        activeFeedbackSetKey = restoredKey
+                        scheduleFeedbackAutoDismiss(restoredKey)
+                    }
+                    if (deletion.restTimerEnabled) {
+                        restTimerEnabledExerciseIds = restTimerEnabledExerciseIds + deletion.exerciseId
+                    }
+                    deletion.pendingSuggestedWeight?.let { suggestedWeight ->
+                        pendingSuggestedWeightByExercise =
+                            pendingSuggestedWeightByExercise + (deletion.exerciseId to suggestedWeight)
+                    }
+                }
+            }
+
+            pendingDeletion = null
+            rebuildUiState()
+        }
+    }
+
+    private fun handleDeletionSnackbarResult(actionPerformed: Boolean) {
+        if (!shouldNavigateToStartAfterDeletion) return
+        if (actionPerformed) {
+            shouldNavigateToStartAfterDeletion = false
+            return
+        }
+
+        val deletion = pendingDeletion as? PendingDeletion.ExerciseDeletion
+        if (deletion == null) {
+            shouldNavigateToStartAfterDeletion = false
+            return
+        }
+
+        val snapshot = latestSnapshot
+        val isStillEmptySession = snapshot != null &&
+            snapshot.sessionId == deletion.sessionId &&
+            snapshot.exercises.isEmpty()
+        shouldNavigateToStartAfterDeletion = false
+        if (!isStillEmptySession) return
+
+        viewModelScope.launch {
+            val discarded = repository.discardSession(deletion.sessionId)
+            if (!discarded) {
+                _effects.emit(
+                    LogWorkoutEffect.ShowSnackbar(
+                        message = "Couldn't close empty workout right now."
+                    )
+                )
+                return@launch
+            }
+
+            clearSessionState(message = "Workout discarded.")
+            _effects.emit(LogWorkoutEffect.NavigateToStartWorkout)
+        }
+    }
+
     private fun addSet(exerciseId: Long) {
         val snapshot = latestSnapshot ?: return
         val exercise = snapshot.exercises.firstOrNull { it.id == exerciseId } ?: return
         val pendingSuggestedWeight = pendingSuggestedWeightByExercise[exerciseId]
-        val nextSetNumber = exercise.targetSets.coerceAtLeast(1) + 1
+        val existingSetCount = exercise.targetSets.coerceAtLeast(0)
+        val nextSetNumber = existingSetCount + 1
         val nextSetKey = buildSetKey(exerciseId = exerciseId, setNumber = nextSetNumber)
-        val previousSetNumber = exercise.targetSets.coerceAtLeast(1)
-        val previousSetKey = buildSetKey(exerciseId = exerciseId, setNumber = previousSetNumber)
+        val previousSetNumber = existingSetCount
         val loggedBySetNumber = exercise.loggedSets.associateBy { it.setNumber }
-        val previousWeight = setInputDrafts[previousSetKey]?.weight
-            ?.takeIf { it.isNotBlank() }
-            ?: loggedBySetNumber[previousSetNumber]?.actualWeightKg?.toString()
+        val previousSetKey = previousSetNumber
+            .takeIf { it > 0 }
+            ?.let { buildSetKey(exerciseId = exerciseId, setNumber = it) }
+        val previousWeight = previousSetKey
+            ?.let { key ->
+                setInputDrafts[key]?.weight
+                    ?.takeIf { it.isNotBlank() }
+                    ?: loggedBySetNumber[previousSetNumber]?.actualWeightKg?.toString()
+            }
             ?: if (exercise.previousResult != null) exercise.targetWeightKg.toString() else ""
-        val previousReps = setInputDrafts[previousSetKey]?.reps
-            ?.takeIf { it.isNotBlank() }
-            ?: loggedBySetNumber[previousSetNumber]?.actualReps?.toString()
+        val previousReps = previousSetKey
+            ?.let { key ->
+                setInputDrafts[key]?.reps
+                    ?.takeIf { it.isNotBlank() }
+                    ?: loggedBySetNumber[previousSetNumber]?.actualReps?.toString()
+            }
             ?: if (exercise.previousResult != null) exercise.targetReps.toString() else ""
         val nextWeight = pendingSuggestedWeight?.toString() ?: previousWeight
 
@@ -472,33 +796,7 @@ class LogWorkoutViewModel(
         viewModelScope.launch {
             val discarded = repository.discardSession(snapshot.sessionId)
             if (discarded) {
-                latestSnapshot = null
-                completionEffectSessionId = null
-                restTimerEnabledExerciseIds = emptySet()
-                restTimerJob?.cancel()
-                restTimerJob = null
-                restTimerState = RestTimerState.Inactive
-                restTimerRemainingSeconds = 0
-                setInputDrafts = emptyMap()
-                selectedRpeBySet = emptyMap()
-                pendingSuggestedWeightByExercise = emptyMap()
-                activeFeedbackSetKey = null
-                feedbackMessageBySet = emptyMap()
-                feedbackAutoDismissJob?.cancel()
-                feedbackAutoDismissJob = null
-                homeRepository.setTodayWorkoutCompleted(completed = false)
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        hasActiveSession = false,
-                        session = null,
-                        hasSeenRestTimerHint = hasSeenRestTimerHint,
-                        restTimer = toRestTimerUiState(),
-                        message = "Workout discarded.",
-                        showDiscardConfirmation = false,
-                        isDiscarding = false
-                    )
-                }
+                clearSessionState(message = "Workout discarded.")
                 _effects.emit(LogWorkoutEffect.CloseAfterDiscard)
             } else {
                 _uiState.update {
@@ -537,7 +835,7 @@ class LogWorkoutViewModel(
             feedbackAutoDismissJob = null
         }
 
-        val totalTargetSets = snapshot.totalSetsTarget.coerceAtLeast(1)
+        val totalTargetSets = snapshot.totalSetsTarget.coerceAtLeast(0)
 
         val exercises = orderedExercises.map { exercise ->
             toExerciseUiModel(
@@ -550,8 +848,11 @@ class LogWorkoutViewModel(
         val durationText = formatDuration(startedAt = snapshot.startedAt, now = now)
         val volumeText = "${snapshot.totalVolumeCompleted.roundToInt()} kg"
         val setsText = "${snapshot.totalSetsCompleted}/$totalTargetSets"
-        val progress = (snapshot.totalSetsCompleted.toFloat() / totalTargetSets.toFloat())
-            .coerceIn(0f, 1f)
+        val progress = if (totalTargetSets > 0) {
+            (snapshot.totalSetsCompleted.toFloat() / totalTargetSets.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
 
         _uiState.value = LogWorkoutUiState(
             isLoading = false,
@@ -576,7 +877,7 @@ class LogWorkoutViewModel(
         snapshot: LogWorkoutSessionSnapshot,
         exercise: LogWorkoutExerciseSnapshot
     ): ExerciseUiModel {
-        val totalSets = exercise.targetSets.coerceAtLeast(1)
+        val totalSets = exercise.targetSets.coerceAtLeast(0)
         val loggedBySetNumber = exercise.loggedSets.associateBy { it.setNumber }
         val nextSetNumberForExercise = nextPendingSetNumberForExercise(exercise.id, snapshot)
         val previousText = exercise.previousResult?.let { "${it.weightKg}kg x ${it.reps}" }.orEmpty()
@@ -636,19 +937,148 @@ class LogWorkoutViewModel(
         snapshot: LogWorkoutSessionSnapshot
     ): Int {
         val exercise = snapshot.exercises.firstOrNull { it.id == exerciseId } ?: return 1
-        val totalSets = exercise.targetSets.coerceAtLeast(1)
+        val totalSets = exercise.targetSets.coerceAtLeast(0)
+        if (totalSets == 0) return 0
         return (exercise.loggedSets.size + 1).coerceIn(1, totalSets)
     }
 
     private fun buildSetKeySpace(exercises: List<LogWorkoutExerciseSnapshot>): Set<String> {
         val keys = mutableSetOf<String>()
         exercises.forEach { exercise ->
-            val totalSets = exercise.targetSets.coerceAtLeast(1)
+            val totalSets = exercise.targetSets.coerceAtLeast(0)
             (1..totalSets).forEach { setNumber ->
                 keys += buildSetKey(exercise.id, setNumber)
             }
         }
         return keys
+    }
+
+    private fun shiftActiveFeedbackAfterSetDeletion(
+        exerciseId: Long,
+        removedSetNumber: Int
+    ) {
+        val activeKey = activeFeedbackSetKey ?: return
+        val keyParts = parseSetKey(activeKey) ?: return
+        if (keyParts.first != exerciseId) {
+            return
+        }
+        when {
+            keyParts.second == removedSetNumber -> {
+                activeFeedbackSetKey = null
+                feedbackAutoDismissJob?.cancel()
+                feedbackAutoDismissJob = null
+            }
+
+            keyParts.second > removedSetNumber -> {
+                activeFeedbackSetKey = buildSetKey(
+                    exerciseId = exerciseId,
+                    setNumber = keyParts.second - 1
+                )
+            }
+        }
+    }
+
+    private fun clearSessionState(message: String) {
+        latestSnapshot = null
+        completionEffectSessionId = null
+        restTimerEnabledExerciseIds = emptySet()
+        restTimerJob?.cancel()
+        restTimerJob = null
+        restTimerState = RestTimerState.Inactive
+        restTimerRemainingSeconds = 0
+        setInputDrafts = emptyMap()
+        selectedRpeBySet = emptyMap()
+        pendingSuggestedWeightByExercise = emptyMap()
+        activeFeedbackSetKey = null
+        feedbackMessageBySet = emptyMap()
+        pendingDeletion = null
+        shouldNavigateToStartAfterDeletion = false
+        feedbackAutoDismissJob?.cancel()
+        feedbackAutoDismissJob = null
+        homeRepository.setTodayWorkoutCompleted(completed = false)
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                hasActiveSession = false,
+                session = null,
+                hasSeenRestTimerHint = hasSeenRestTimerHint,
+                restTimer = toRestTimerUiState(),
+                message = message,
+                showDiscardConfirmation = false,
+                isDiscarding = false
+            )
+        }
+    }
+
+    private fun shiftActiveFeedbackAfterSetRestore(
+        exerciseId: Long,
+        insertedSetNumber: Int
+    ) {
+        val activeKey = activeFeedbackSetKey ?: return
+        val keyParts = parseSetKey(activeKey) ?: return
+        if (keyParts.first != exerciseId) {
+            return
+        }
+        if (keyParts.second >= insertedSetNumber) {
+            activeFeedbackSetKey = buildSetKey(
+                exerciseId = exerciseId,
+                setNumber = keyParts.second + 1
+            )
+        }
+    }
+
+    private fun <T> shiftSetScopedMapDown(
+        source: Map<String, T>,
+        exerciseId: Long,
+        removedSetNumber: Int
+    ): Map<String, T> {
+        if (source.isEmpty()) return source
+        return buildMap(source.size) {
+            source.forEach { (key, value) ->
+                val keyParts = parseSetKey(key)
+                if (keyParts == null || keyParts.first != exerciseId) {
+                    put(key, value)
+                    return@forEach
+                }
+
+                when {
+                    keyParts.second < removedSetNumber -> put(key, value)
+                    keyParts.second == removedSetNumber -> Unit
+                    else -> {
+                        put(
+                            buildSetKey(exerciseId = exerciseId, setNumber = keyParts.second - 1),
+                            value
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun <T> shiftSetScopedMapUp(
+        source: Map<String, T>,
+        exerciseId: Long,
+        insertedSetNumber: Int
+    ): Map<String, T> {
+        if (source.isEmpty()) return source
+        return buildMap(source.size + 1) {
+            source.forEach { (key, value) ->
+                val keyParts = parseSetKey(key)
+                if (keyParts == null || keyParts.first != exerciseId) {
+                    put(key, value)
+                    return@forEach
+                }
+
+                if (keyParts.second >= insertedSetNumber) {
+                    put(
+                        buildSetKey(exerciseId = exerciseId, setNumber = keyParts.second + 1),
+                        value
+                    )
+                } else {
+                    put(key, value)
+                }
+            }
+        }
     }
 
     private fun suggestNextWeight(currentWeightKg: Int, selectedRpe: Int): Int {
@@ -669,6 +1099,12 @@ class LogWorkoutViewModel(
 
     private fun buildSetKey(exerciseId: Long, setNumber: Int): String {
         return "$exerciseId:$setNumber"
+    }
+
+    private fun parseSetKey(key: String): Pair<Long, Int>? {
+        val exerciseId = key.substringBefore(':', missingDelimiterValue = "").toLongOrNull() ?: return null
+        val setNumber = key.substringAfter(':', missingDelimiterValue = "").toIntOrNull() ?: return null
+        return exerciseId to setNumber
     }
 
     private fun parseSetNumber(setId: String): Int? {
