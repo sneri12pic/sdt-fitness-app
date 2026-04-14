@@ -23,7 +23,8 @@
     <string name="quick_log_duration_template">%1$d min</string>
     <string name="quick_log_save_button">Save Quick Log</string>
     <string name="quick_log_helper_text">Adds a light activity to today\'s progress</string>
-    <string name="quick_log_saved_message">Quick Log saved</string>
+    <string name="quick_log_saved_message">Session logged — you’re building consistency</string>
+    <string name="rest_day_logged_message">Rest day logged — recovery counts too</string>
     <string name="quick_log_walk_icon_cd">Walk activity icon</string>
     <string name="quick_log_mobility_icon_cd">Mobility activity icon</string>
     <string name="quick_log_custom_icon_cd">Custom activity icon</string>
