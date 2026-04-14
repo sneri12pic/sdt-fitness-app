@@ -49,4 +49,19 @@ interface SessionExerciseDao {
 
     @Query("DELETE FROM session_exercises WHERE accountId = :accountId")
     suspend fun deleteAllForAccount(accountId: String)
+
+    @Query(
+        """
+        UPDATE session_exercises
+        SET targetSets = :targetSets, updatedAt = :updatedAt
+        WHERE accountId = :accountId
+          AND id = :sessionExerciseId
+        """
+    )
+    suspend fun updateTargetSets(
+        accountId: String,
+        sessionExerciseId: Long,
+        targetSets: Int,
+        updatedAt: Long
+    )
 }

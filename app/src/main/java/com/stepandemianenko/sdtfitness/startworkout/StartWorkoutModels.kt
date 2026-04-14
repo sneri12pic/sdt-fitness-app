@@ -100,7 +100,6 @@ fun WorkoutPlanUiModel.actualEstimatedDurationText(): String {
 }
 
 sealed interface StartWorkoutUiEvent {
-    data object RetryLoad : StartWorkoutUiEvent
     data object BackClick : StartWorkoutUiEvent
     data object StartWorkoutClick : StartWorkoutUiEvent
     data object ShortenSessionClick : StartWorkoutUiEvent

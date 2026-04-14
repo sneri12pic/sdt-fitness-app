@@ -55,7 +55,10 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
+import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.home.DailyStepsSourceType
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 class Progress : ComponentActivity() {
@@ -79,8 +82,16 @@ class Progress : ComponentActivity() {
     }
 
     private fun openWorkoutWithoutAnimation() {
-        startActivity(Intent(this, StartWorkout::class.java))
-        overridePendingTransition(0, 0)
+        lifecycleScope.launch {
+            val activeSessionId = AppGraph.workoutSessionRepository(this@Progress).getActiveSessionId()
+            val intent = if (activeSessionId != null) {
+                OngoingWorkout.createIntent(this@Progress, activeSessionId)
+            } else {
+                StartWorkout.createIntent(this@Progress)
+            }
+            startActivity(intent)
+            overridePendingTransition(0, 0)
+        }
     }
 
     private fun openCompletedSessionsWithoutAnimation() {

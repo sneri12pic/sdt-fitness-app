@@ -6,8 +6,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.lifecycle.lifecycleScope
+import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.progress.CompletedSessionsRoute
 import com.stepandemianenko.sdtfitness.progress.ProgressRoutes
+import kotlinx.coroutines.launch
 
 class CompletedSessions : ComponentActivity() {
 
@@ -43,8 +46,16 @@ class CompletedSessions : ComponentActivity() {
     }
 
     private fun openWorkoutWithoutAnimation() {
-        startActivity(Intent(this, StartWorkout::class.java))
-        overridePendingTransition(0, 0)
+        lifecycleScope.launch {
+            val activeSessionId = AppGraph.workoutSessionRepository(this@CompletedSessions).getActiveSessionId()
+            val intent = if (activeSessionId != null) {
+                OngoingWorkout.createIntent(this@CompletedSessions, activeSessionId)
+            } else {
+                StartWorkout.createIntent(this@CompletedSessions)
+            }
+            startActivity(intent)
+            overridePendingTransition(0, 0)
+        }
     }
 
     private fun openProfileWithoutAnimation() {

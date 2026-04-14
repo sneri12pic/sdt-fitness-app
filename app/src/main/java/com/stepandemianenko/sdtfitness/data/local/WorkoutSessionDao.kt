@@ -75,6 +75,15 @@ interface WorkoutSessionDao {
         endedAt: Long
     )
 
+    @Query(
+        """
+        DELETE FROM workout_sessions
+        WHERE accountId = :accountId
+          AND id = :sessionId
+        """
+    )
+    suspend fun deleteById(accountId: String, sessionId: Long)
+
     @Query("DELETE FROM workout_sessions WHERE accountId = :accountId")
     suspend fun deleteAllForAccount(accountId: String)
 }

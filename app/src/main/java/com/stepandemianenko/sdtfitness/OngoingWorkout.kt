@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import com.stepandemianenko.sdtfitness.startworkout.OngoingWorkoutRoute
 
 class OngoingWorkout : ComponentActivity() {
+    private var activeSessionId: Long? = null
 
     companion object {
         const val EXTRA_SESSION_ID = "extra_session_id"
@@ -24,14 +25,20 @@ class OngoingWorkout : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val initialSessionId = intent.getLongExtra(EXTRA_SESSION_ID, -1L).takeIf { it > 0L }
+        activeSessionId = intent.getLongExtra(EXTRA_SESSION_ID, -1L).takeIf { it > 0L }
 
         setContent {
             MaterialTheme {
                 OngoingWorkoutRoute(
-                    initialSessionId = initialSessionId,
+                    initialSessionId = activeSessionId,
                     onBackClick = { finish() },
-                    onEditClick = { },
+                    onNavigateToStartWorkout = {
+                        startActivity(StartWorkout.createIntent(this))
+                        overridePendingTransition(0, 0)
+                        finish()
+                    },
+                    onTimerClick = {},
+                    onAddExerciseClick = { openStartWorkoutWithoutAnimation() },
                     onLogSetClick = { _, _, _ -> },
                     onSessionCompleted = {
                         openProgressWithoutAnimation()
@@ -58,6 +65,17 @@ class OngoingWorkout : ComponentActivity() {
 
     private fun openProfileWithoutAnimation() {
         startActivity(Intent(this, Profile::class.java))
+        overridePendingTransition(0, 0)
+    }
+
+    private fun openStartWorkoutWithoutAnimation() {
+        startActivity(
+            StartWorkout.createIntent(
+                this,
+                openAddExerciseOnStart = true,
+                appendToSessionId = activeSessionId
+            )
+        )
         overridePendingTransition(0, 0)
     }
 }
