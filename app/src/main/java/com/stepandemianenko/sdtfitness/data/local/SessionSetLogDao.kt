@@ -129,4 +129,55 @@ interface SessionSetLogDao {
 
     @Query("DELETE FROM session_set_logs WHERE accountId = :accountId")
     suspend fun deleteAllForAccount(accountId: String)
+
+    @Query(
+        """
+        UPDATE session_set_logs
+        SET actualWeightKg = :actualWeightKg,
+            actualReps = :actualReps,
+            rpe = :rpe,
+            updatedAt = :updatedAt
+        WHERE accountId = :accountId
+          AND id = :setLogId
+        """
+    )
+    suspend fun updateLoggedSetValues(
+        accountId: String,
+        setLogId: Long,
+        actualWeightKg: Int,
+        actualReps: Int,
+        rpe: Int?,
+        updatedAt: Long
+    )
+
+    @Query(
+        """
+        DELETE FROM session_set_logs
+        WHERE accountId = :accountId
+          AND id = :setLogId
+        """
+    )
+    suspend fun deleteById(
+        accountId: String,
+        setLogId: Long
+    )
+
+    @Query(
+        """
+        UPDATE session_set_logs
+        SET setNumber = setNumber - 1,
+            updatedAt = :updatedAt
+        WHERE accountId = :accountId
+          AND sessionId = :sessionId
+          AND sessionExerciseId = :sessionExerciseId
+          AND setNumber > :removedSetNumber
+        """
+    )
+    suspend fun shiftSetNumbersDownAfter(
+        accountId: String,
+        sessionId: Long,
+        sessionExerciseId: Long,
+        removedSetNumber: Int,
+        updatedAt: Long
+    )
 }

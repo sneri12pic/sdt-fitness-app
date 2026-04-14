@@ -66,6 +66,44 @@ data class ActiveWorkoutSnapshot(
     val personalBest: PreviousExerciseResult?
 )
 
+data class LoggedWorkoutSetSnapshot(
+    val id: Long,
+    val setNumber: Int,
+    val actualWeightKg: Int,
+    val actualReps: Int,
+    val rpe: Int?
+)
+
+data class LoggedSetUpdateDraft(
+    val weightKg: Int,
+    val reps: Int,
+    val rpe: Int?
+)
+
+data class LogWorkoutExerciseSnapshot(
+    val id: Long,
+    val exerciseId: String,
+    val exerciseName: String,
+    val exerciseOrder: Int,
+    val targetSets: Int,
+    val targetReps: Int,
+    val targetWeightKg: Int,
+    val loggedSets: List<LoggedWorkoutSetSnapshot>,
+    val previousResult: PreviousExerciseResult?,
+    val personalBest: PreviousExerciseResult?
+)
+
+data class LogWorkoutSessionSnapshot(
+    val sessionId: Long,
+    val status: String,
+    val startedAt: Long,
+    val totalSetsCompleted: Int,
+    val totalSetsTarget: Int,
+    val remainingSets: Int,
+    val totalVolumeCompleted: Double,
+    val exercises: List<LogWorkoutExerciseSnapshot>
+)
+
 sealed interface LogSetOutcome {
     data class AdvancedSet(
         val nextSetNumber: Int,
@@ -254,6 +292,145 @@ class WorkoutSessionRepository(
         }
     }
 
+    suspend fun appendExercisesToSession(
+        sessionId: Long,
+        exercisesToAppend: List<SessionExerciseDraft>,
+        forceSingleSet: Boolean = true
+    ): Boolean {
+        if (exercisesToAppend.isEmpty()) return false
+
+        val accountId = accountSessionManager.requireActiveAccountId()
+        val now = System.currentTimeMillis()
+        return database.withTransaction {
+            val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
+                ?: return@withTransaction false
+            if (session.status !in ACTIVE_SESSION_STATUSES) {
+                return@withTransaction false
+            }
+
+            val existingExercises = exerciseDao.getForSession(accountId = accountId, sessionId = sessionId)
+                .sortedBy { it.exerciseOrder }
+            val nextOrderStart = (existingExercises.maxOfOrNull { it.exerciseOrder } ?: -1) + 1
+
+            val appendEntities = exercisesToAppend.mapIndexed { index, draft ->
+                SessionExerciseEntity(
+                    accountId = accountId,
+                    sessionId = sessionId,
+                    exerciseId = draft.exerciseId,
+                    exerciseName = draft.exerciseName,
+                    exerciseOrder = nextOrderStart + index,
+                    targetSets = if (forceSingleSet) 1 else draft.targetSets.coerceAtLeast(1),
+                    targetReps = draft.targetReps.coerceAtLeast(1),
+                    targetWeightKg = draft.targetWeightKg.coerceAtLeast(0),
+                    status = SessionExerciseStatus.PENDING,
+                    createdAt = now,
+                    updatedAt = now,
+                    syncState = SyncState.LOCAL_ONLY
+                )
+            }
+            exerciseDao.insertAll(appendEntities)
+
+            val addedSetsTarget = appendEntities.sumOf { it.targetSets.coerceAtLeast(1) }
+            sessionDao.update(
+                session.copy(
+                    status = WorkoutSessionStatus.ACTIVE,
+                    totalSetsTarget = session.totalSetsTarget + addedSetsTarget,
+                    updatedAt = now
+                )
+            )
+            true
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeLogWorkoutSession(sessionId: Long): Flow<LogWorkoutSessionSnapshot?> {
+        return accountSessionManager.accountScope.flatMapLatest { scopeKey ->
+            val accountId = scopeKey.accountId
+            val sessionFlow = sessionDao.observeById(accountId = accountId, sessionId = sessionId)
+            val exercisesFlow = exerciseDao.observeForSession(accountId = accountId, sessionId = sessionId)
+            val setLogsFlow = setLogDao.observeForSession(accountId = accountId, sessionId = sessionId)
+
+            combine(sessionFlow, exercisesFlow, setLogsFlow) { session, exercises, setLogs ->
+                if (session == null) return@combine null
+
+                val orderedExercises = exercises.sortedBy { it.exerciseOrder }
+                val setsByExercise = setLogs
+                    .sortedBy { it.completedAt }
+                    .groupBy { it.sessionExerciseId }
+
+                val exerciseSnapshots = orderedExercises.map { exercise ->
+                    val loggedSets = setsByExercise[exercise.id]
+                        .orEmpty()
+                        .sortedBy { it.setNumber }
+                        .map { log ->
+                            LoggedWorkoutSetSnapshot(
+                                id = log.id,
+                                setNumber = log.setNumber,
+                                actualWeightKg = log.actualWeightKg,
+                                actualReps = log.actualReps,
+                                rpe = log.rpe
+                            )
+                        }
+
+                    val previousResult = setLogDao.getLatestCompletedResultForExercise(
+                        accountId = accountId,
+                        exerciseId = exercise.exerciseId,
+                        completedStatus = WorkoutSessionStatus.COMPLETED,
+                        excludeSessionId = session.id
+                    )?.let {
+                        PreviousExerciseResult(
+                            weightKg = it.actualWeightKg,
+                            reps = it.actualReps,
+                            completedAt = it.completedAt
+                        )
+                    }
+
+                    val personalBest = setLogDao.getPersonalBestForExercise(
+                        accountId = accountId,
+                        exerciseId = exercise.exerciseId,
+                        completedStatus = WorkoutSessionStatus.COMPLETED,
+                        excludeSessionId = session.id
+                    )?.let {
+                        PreviousExerciseResult(
+                            weightKg = it.actualWeightKg,
+                            reps = it.actualReps,
+                            completedAt = it.completedAt
+                        )
+                    }
+
+                    LogWorkoutExerciseSnapshot(
+                        id = exercise.id,
+                        exerciseId = exercise.exerciseId,
+                        exerciseName = exercise.exerciseName,
+                        exerciseOrder = exercise.exerciseOrder,
+                        targetSets = exercise.targetSets,
+                        targetReps = exercise.targetReps,
+                        targetWeightKg = exercise.targetWeightKg,
+                        loggedSets = loggedSets,
+                        previousResult = previousResult,
+                        personalBest = personalBest
+                    )
+                }
+
+                val totalSetsTarget = orderedExercises.sumOf { it.targetSets.coerceAtLeast(1) }
+                val totalSetsCompleted = setLogs.size
+                val remainingSets = (totalSetsTarget - totalSetsCompleted).coerceAtLeast(0)
+                val volume = setLogs.sumOf { (it.actualWeightKg * it.actualReps).toDouble() }
+
+                LogWorkoutSessionSnapshot(
+                    sessionId = session.id,
+                    status = session.status,
+                    startedAt = session.startedAt,
+                    totalSetsCompleted = totalSetsCompleted,
+                    totalSetsTarget = totalSetsTarget,
+                    remainingSets = remainingSets,
+                    totalVolumeCompleted = volume,
+                    exercises = exerciseSnapshots
+                )
+            }
+        }
+    }
+
     suspend fun logCurrentSet(
         sessionId: Long,
         actualWeightKg: Int,
@@ -363,6 +540,347 @@ class WorkoutSessionRepository(
                 completedExerciseName = currentExercise.exerciseName,
                 sessionId = session.id
             )
+        }
+    }
+
+    suspend fun logSetForExercise(
+        sessionId: Long,
+        sessionExerciseId: Long,
+        actualWeightKg: Int,
+        actualReps: Int,
+        rpe: Int?
+    ): LogSetOutcome {
+        val accountId = accountSessionManager.requireActiveAccountId()
+        return database.withTransaction {
+            val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
+                ?: return@withTransaction LogSetOutcome.NoActiveSession
+
+            if (session.status !in ACTIVE_SESSION_STATUSES) {
+                return@withTransaction LogSetOutcome.NoActiveSession
+            }
+
+            val orderedExercises = exerciseDao.getForSession(accountId = accountId, sessionId = sessionId)
+                .sortedBy { it.exerciseOrder }
+            val targetExercise = orderedExercises.firstOrNull { it.id == sessionExerciseId }
+                ?: return@withTransaction LogSetOutcome.NoActiveSession
+
+            val existingSetLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
+            val loggedSetCountByExercise = existingSetLogs
+                .groupBy { it.sessionExerciseId }
+                .mapValues { (_, logs) -> logs.size }
+            val completedForTargetExercise = loggedSetCountByExercise[targetExercise.id] ?: 0
+            if (completedForTargetExercise >= targetExercise.targetSets) {
+                return@withTransaction LogSetOutcome.NoActiveSession
+            }
+
+            val setNumber = completedForTargetExercise + 1
+            val now = System.currentTimeMillis()
+            val normalizedWeight = actualWeightKg.coerceAtLeast(0)
+            val normalizedReps = actualReps.coerceAtLeast(1)
+
+            setLogDao.insert(
+                SessionSetLogEntity(
+                    accountId = accountId,
+                    sessionId = session.id,
+                    sessionExerciseId = targetExercise.id,
+                    setNumber = setNumber,
+                    targetWeightKg = targetExercise.targetWeightKg,
+                    actualWeightKg = normalizedWeight,
+                    targetReps = targetExercise.targetReps,
+                    actualReps = normalizedReps,
+                    rpe = rpe,
+                    completedAt = now,
+                    createdAt = now,
+                    updatedAt = now,
+                    syncState = SyncState.LOCAL_ONLY
+                )
+            )
+
+            val updatedLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
+            val updatedCounts = updatedLogs
+                .groupBy { it.sessionExerciseId }
+                .mapValues { (_, logs) -> logs.size }
+
+            orderedExercises.forEach { exercise ->
+                val completedCount = updatedCounts[exercise.id] ?: 0
+                val nextStatus = when {
+                    completedCount >= exercise.targetSets -> SessionExerciseStatus.COMPLETED
+                    completedCount > 0 -> SessionExerciseStatus.ACTIVE
+                    else -> SessionExerciseStatus.PENDING
+                }
+                exerciseDao.updateStatus(
+                    accountId = accountId,
+                    sessionExerciseId = exercise.id,
+                    status = nextStatus,
+                    updatedAt = now
+                )
+            }
+
+            val allExercisesCompleted = orderedExercises.all { exercise ->
+                (updatedCounts[exercise.id] ?: 0) >= exercise.targetSets
+            }
+            val firstIncompleteIndex = orderedExercises.indexOfFirst { exercise ->
+                (updatedCounts[exercise.id] ?: 0) < exercise.targetSets
+            }.coerceAtLeast(0)
+            val activeExercise = orderedExercises.getOrNull(firstIncompleteIndex)
+            val activeExerciseCompletedSets = activeExercise?.let { updatedCounts[it.id] ?: 0 } ?: 0
+
+            sessionDao.update(
+                session.copy(
+                    status = WorkoutSessionStatus.ACTIVE,
+                    completedAt = session.completedAt,
+                    currentExerciseIndex = if (allExercisesCompleted) {
+                        orderedExercises.lastIndex.coerceAtLeast(0)
+                    } else {
+                        firstIncompleteIndex
+                    },
+                    currentSetIndex = if (allExercisesCompleted) 0 else activeExerciseCompletedSets,
+                    totalSetsCompleted = updatedLogs.size,
+                    totalRepsCompleted = updatedLogs.sumOf { it.actualReps },
+                    totalVolumeCompleted = updatedLogs.sumOf {
+                        (it.actualWeightKg * it.actualReps).toDouble()
+                    },
+                    updatedAt = now
+                )
+            )
+
+            if (allExercisesCompleted) {
+                return@withTransaction LogSetOutcome.AdvancedExercise(
+                    completedExerciseName = targetExercise.exerciseName,
+                    nextExerciseName = targetExercise.exerciseName
+                )
+            }
+
+            if (setNumber < targetExercise.targetSets) {
+                return@withTransaction LogSetOutcome.AdvancedSet(
+                    nextSetNumber = setNumber + 1,
+                    totalSetsForExercise = targetExercise.targetSets
+                )
+            }
+
+            val nextExerciseName = orderedExercises
+                .firstOrNull { exercise -> (updatedCounts[exercise.id] ?: 0) < exercise.targetSets }
+                ?.exerciseName
+                ?: targetExercise.exerciseName
+            LogSetOutcome.AdvancedExercise(
+                completedExerciseName = targetExercise.exerciseName,
+                nextExerciseName = nextExerciseName
+            )
+        }
+    }
+
+    suspend fun updateLoggedSet(
+        sessionId: Long,
+        sessionExerciseId: Long,
+        setNumber: Int,
+        update: LoggedSetUpdateDraft
+    ): Boolean {
+        val accountId = accountSessionManager.requireActiveAccountId()
+        return database.withTransaction {
+            val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
+                ?: return@withTransaction false
+            val existingSetLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
+            val targetSetLog = existingSetLogs.firstOrNull { log ->
+                log.sessionExerciseId == sessionExerciseId && log.setNumber == setNumber
+            } ?: return@withTransaction false
+
+            val now = System.currentTimeMillis()
+            setLogDao.updateLoggedSetValues(
+                accountId = accountId,
+                setLogId = targetSetLog.id,
+                actualWeightKg = update.weightKg.coerceAtLeast(0),
+                actualReps = update.reps.coerceAtLeast(1),
+                rpe = update.rpe,
+                updatedAt = now
+            )
+
+            val refreshedLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
+            sessionDao.update(
+                session.copy(
+                    totalSetsCompleted = refreshedLogs.size,
+                    totalRepsCompleted = refreshedLogs.sumOf { it.actualReps },
+                    totalVolumeCompleted = refreshedLogs.sumOf {
+                        (it.actualWeightKg * it.actualReps).toDouble()
+                    },
+                    updatedAt = now
+                )
+            )
+            true
+        }
+    }
+
+    suspend fun unlogSetForExercise(
+        sessionId: Long,
+        sessionExerciseId: Long,
+        setNumber: Int
+    ): Boolean {
+        val accountId = accountSessionManager.requireActiveAccountId()
+        return database.withTransaction {
+            val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
+                ?: return@withTransaction false
+            if (session.status !in ACTIVE_SESSION_STATUSES) {
+                return@withTransaction false
+            }
+
+            val orderedExercises = exerciseDao.getForSession(accountId = accountId, sessionId = sessionId)
+                .sortedBy { it.exerciseOrder }
+            val targetExercise = orderedExercises.firstOrNull { it.id == sessionExerciseId }
+                ?: return@withTransaction false
+
+            val existingSetLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
+            val targetSetLog = existingSetLogs.firstOrNull { log ->
+                log.sessionExerciseId == sessionExerciseId && log.setNumber == setNumber
+            } ?: return@withTransaction false
+
+            val now = System.currentTimeMillis()
+            setLogDao.deleteById(
+                accountId = accountId,
+                setLogId = targetSetLog.id
+            )
+            setLogDao.shiftSetNumbersDownAfter(
+                accountId = accountId,
+                sessionId = sessionId,
+                sessionExerciseId = sessionExerciseId,
+                removedSetNumber = setNumber,
+                updatedAt = now
+            )
+
+            val refreshedLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
+            val refreshedCounts = refreshedLogs
+                .groupBy { it.sessionExerciseId }
+                .mapValues { (_, logs) -> logs.size }
+
+            orderedExercises.forEach { exercise ->
+                val completedCount = refreshedCounts[exercise.id] ?: 0
+                val nextStatus = when {
+                    completedCount >= exercise.targetSets -> SessionExerciseStatus.COMPLETED
+                    completedCount > 0 -> SessionExerciseStatus.ACTIVE
+                    else -> SessionExerciseStatus.PENDING
+                }
+                exerciseDao.updateStatus(
+                    accountId = accountId,
+                    sessionExerciseId = exercise.id,
+                    status = nextStatus,
+                    updatedAt = now
+                )
+            }
+
+            val firstIncompleteIndex = orderedExercises.indexOfFirst { exercise ->
+                (refreshedCounts[exercise.id] ?: 0) < exercise.targetSets
+            }.coerceAtLeast(0)
+            val activeExercise = orderedExercises.getOrNull(firstIncompleteIndex)
+            val activeExerciseCompletedSets = activeExercise?.let { refreshedCounts[it.id] ?: 0 } ?: 0
+
+            sessionDao.update(
+                session.copy(
+                    status = WorkoutSessionStatus.ACTIVE,
+                    completedAt = null,
+                    currentExerciseIndex = firstIncompleteIndex,
+                    currentSetIndex = activeExerciseCompletedSets,
+                    totalSetsCompleted = refreshedLogs.size,
+                    totalRepsCompleted = refreshedLogs.sumOf { it.actualReps },
+                    totalVolumeCompleted = refreshedLogs.sumOf {
+                        (it.actualWeightKg * it.actualReps).toDouble()
+                    },
+                    updatedAt = now
+                )
+            )
+            true
+        }
+    }
+
+    suspend fun increaseExerciseTargetSets(
+        sessionId: Long,
+        sessionExerciseId: Long,
+        delta: Int = 1
+    ): Boolean {
+        if (delta <= 0) return false
+
+        val accountId = accountSessionManager.requireActiveAccountId()
+        return database.withTransaction {
+            val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
+                ?: return@withTransaction false
+            if (session.status !in ACTIVE_SESSION_STATUSES) {
+                return@withTransaction false
+            }
+
+            val exercise = exerciseDao.getForSession(accountId = accountId, sessionId = sessionId)
+                .firstOrNull { it.id == sessionExerciseId }
+                ?: return@withTransaction false
+
+            val now = System.currentTimeMillis()
+            val nextTargetSets = (exercise.targetSets + delta).coerceAtLeast(1)
+            exerciseDao.updateTargetSets(
+                accountId = accountId,
+                sessionExerciseId = sessionExerciseId,
+                targetSets = nextTargetSets,
+                updatedAt = now
+            )
+            sessionDao.update(
+                session.copy(
+                    totalSetsTarget = (session.totalSetsTarget + delta).coerceAtLeast(1),
+                    updatedAt = now
+                )
+            )
+            true
+        }
+    }
+
+    suspend fun discardSession(sessionId: Long): Boolean {
+        val accountId = accountSessionManager.requireActiveAccountId()
+        return database.withTransaction {
+            val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
+                ?: return@withTransaction false
+            if (session.status !in ACTIVE_SESSION_STATUSES) {
+                return@withTransaction false
+            }
+            sessionDao.deleteById(accountId = accountId, sessionId = sessionId)
+            true
+        }
+    }
+
+    suspend fun completeSession(sessionId: Long): Boolean {
+        val accountId = accountSessionManager.requireActiveAccountId()
+        return database.withTransaction {
+            val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
+                ?: return@withTransaction false
+
+            if (session.status == WorkoutSessionStatus.COMPLETED) {
+                return@withTransaction true
+            }
+
+            val now = System.currentTimeMillis()
+            val exercises = exerciseDao.getForSession(accountId = accountId, sessionId = sessionId)
+            val setLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
+            val loggedCountByExercise = setLogs
+                .groupBy { it.sessionExerciseId }
+                .mapValues { (_, logs) -> logs.size }
+
+            exercises.forEach { exercise ->
+                val loggedCount = loggedCountByExercise[exercise.id] ?: 0
+                val nextStatus = if (loggedCount >= exercise.targetSets) {
+                    SessionExerciseStatus.COMPLETED
+                } else {
+                    SessionExerciseStatus.SKIPPED
+                }
+                exerciseDao.updateStatus(
+                    accountId = accountId,
+                    sessionExerciseId = exercise.id,
+                    status = nextStatus,
+                    updatedAt = now
+                )
+            }
+
+            sessionDao.update(
+                session.copy(
+                    status = WorkoutSessionStatus.COMPLETED,
+                    completedAt = now,
+                    currentExerciseIndex = exercises.lastIndex.coerceAtLeast(0),
+                    currentSetIndex = 0,
+                    updatedAt = now
+                )
+            )
+            true
         }
     }
 

@@ -31,6 +31,8 @@ class StartWorkoutViewModel(
     private var lastDeletedExercise: DeletedExerciseSnapshot? = null
     private val workoutSessionRepository = AppGraph.workoutSessionRepository(application)
     private val homeRepository = AppGraph.homeRepository(application)
+    private var appendToSessionId: Long? = null
+    private var appendModeEnabled: Boolean = false
 
     init {
         _uiState.value = StartWorkoutFakeStateProvider.emptyState()
@@ -49,7 +51,6 @@ class StartWorkoutViewModel(
 
     fun onEvent(event: StartWorkoutUiEvent) {
         when (event) {
-            StartWorkoutUiEvent.RetryLoad -> loadDefaultPlan()
             StartWorkoutUiEvent.ShortenSessionClick -> applyShortenedSession()
             StartWorkoutUiEvent.AddExerciseClick -> openExercisePicker()
             is StartWorkoutUiEvent.CompleteOrSkipExercise -> completeOrSkipExercise(event.exerciseId)
@@ -80,12 +81,12 @@ class StartWorkoutViewModel(
         }
     }
 
-    private fun loadDefaultPlan() {
-        val currentStreakDays = homeRepository.dashboardState.value.currentStreakCount
-        val contentState = StartWorkoutFakeStateProvider.contentState()
-        _uiState.value = contentState.copy(
-            workoutPlan = contentState.workoutPlan?.withConsistencyStreak(currentStreakDays)
-        )
+    fun setAppendToSessionId(sessionId: Long?) {
+        appendToSessionId = sessionId
+    }
+
+    fun setAppendModeEnabled(enabled: Boolean) {
+        appendModeEnabled = enabled
     }
 
     private fun applyShortenedSession() {
@@ -281,6 +282,12 @@ class StartWorkoutViewModel(
     }
 
     private fun applyExerciseSelection() {
+        if (appendModeEnabled) {
+            appendSelectedExercisesToCurrentSession()
+            return
+        }
+
+        var shouldStartWorkout = false
         _uiState.update { current ->
             val selectedExercises = buildExercisesFromSelection(
                 isShortened = current.isSessionShortened,
@@ -304,6 +311,81 @@ class StartWorkoutViewModel(
                 workoutPlan = basePlan
                     .withConsistencyStreak(currentStreakDays)
                     .copy(exercises = selectedExercises)
+            )
+                .also { shouldStartWorkout = true }
+        }
+        if (shouldStartWorkout) {
+            startWorkout()
+        }
+    }
+
+    private fun appendSelectedExercisesToCurrentSession() {
+        val current = _uiState.value
+        val selectedExercises = buildExercisesFromSelection(
+            isShortened = false,
+            selectedExerciseIds = current.selectedExerciseIds,
+            exerciseCatalog = current.exerciseCatalog
+        )
+        if (selectedExercises.isEmpty()) {
+            _uiState.update { it.copy(isSelectingExercises = false) }
+            return
+        }
+
+        _uiState.update { it.copy(isSelectingExercises = false) }
+        viewModelScope.launch {
+            val sessionId = appendToSessionId ?: workoutSessionRepository.getActiveSessionId()
+            if (sessionId == null) {
+                startNewSessionFromSelectedExercises(selectedExercises)
+                return@launch
+            }
+
+            val appended = workoutSessionRepository.appendExercisesToSession(
+                sessionId = sessionId,
+                exercisesToAppend = selectedExercises.map { exercise ->
+                    SessionExerciseDraft(
+                        exerciseId = exercise.id,
+                        exerciseName = exercise.name,
+                        targetSets = 1,
+                        targetReps = exercise.targetReps,
+                        targetWeightKg = exercise.targetWeightKg
+                    )
+                },
+                forceSingleSet = true
+            )
+
+            if (appended) {
+                _effects.emit(
+                    StartWorkoutEffect.NavigateToOngoingWorkout(
+                        sessionId = sessionId,
+                        resumedExisting = true
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun startNewSessionFromSelectedExercises(
+        selectedExercises: List<WorkoutExerciseUiModel>
+    ) {
+        runCatching {
+            workoutSessionRepository.startOrResumeSession(
+                templateId = "custom_ongoing_workout",
+                orderedExercises = selectedExercises.map { exercise ->
+                    SessionExerciseDraft(
+                        exerciseId = exercise.id,
+                        exerciseName = exercise.name,
+                        targetSets = 1,
+                        targetReps = exercise.targetReps,
+                        targetWeightKg = exercise.targetWeightKg
+                    )
+                }
+            )
+        }.onSuccess { result ->
+            _effects.emit(
+                StartWorkoutEffect.NavigateToOngoingWorkout(
+                    sessionId = result.sessionId,
+                    resumedExisting = result.resumedExisting
+                )
             )
         }
     }
@@ -363,7 +445,7 @@ class StartWorkoutViewModel(
                     SessionExerciseDraft(
                         exerciseId = exercise.id,
                         exerciseName = exercise.name,
-                        targetSets = exercise.targetSets,
+                        targetSets = 1,
                         targetReps = exercise.targetReps,
                         targetWeightKg = exercise.targetWeightKg
                     )

@@ -27,16 +27,11 @@ import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -47,7 +42,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +49,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,14 +56,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 //import com.stepandemianenko.sdtfitness.BottomBarBg
 //import com.stepandemianenko.sdtfitness.InactiveIcon
 import com.stepandemianenko.sdtfitness.R
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
 
 private val StartWorkoutBackground = Color(0xFFEBC0B0)
 private val StartWorkoutCardBackground = Color(0xFFFEEADC)
@@ -84,22 +75,12 @@ private val StartWorkoutSuccess = Color(0xFF70C97D)
 private val BottomBarBg = Color(0xFFF7E6DC)
 private val InactiveIcon = Color(0xFFC48778)
 
-private enum class EditableTargetField {
-    Weight,
-    Reps
-}
-
-private data class ExerciseTargetEditorState(
-    val exerciseId: String,
-    val exerciseName: String,
-    val field: EditableTargetField,
-    val currentValue: Int
-)
-
 @Composable
 fun StartWorkoutRoute(
     onBackClick: () -> Unit,
     onStartWorkoutClick: (Long) -> Unit,
+    openAddExerciseOnStart: Boolean = false,
+    appendToSessionId: Long? = null,
     onShortenSessionClick: () -> Unit,
     onEditWorkoutClick: () -> Unit,
     onExerciseClick: (WorkoutExerciseUiModel) -> Unit,
@@ -111,8 +92,7 @@ fun StartWorkoutRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
-    var targetEditor by remember { mutableStateOf<ExerciseTargetEditorState?>(null) }
+    var hasTriggeredOpenAddExercise by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
@@ -122,13 +102,28 @@ fun StartWorkoutRoute(
         }
     }
 
-    if (uiState.isSelectingExercises) {
+    LaunchedEffect(openAddExerciseOnStart, appendToSessionId) {
+        viewModel.setAppendToSessionId(appendToSessionId)
+        viewModel.setAppendModeEnabled(openAddExerciseOnStart)
+        if (openAddExerciseOnStart && !hasTriggeredOpenAddExercise) {
+            viewModel.onEvent(StartWorkoutUiEvent.AddExerciseClick)
+            hasTriggeredOpenAddExercise = true
+        }
+    }
+
+    if (openAddExerciseOnStart || uiState.isSelectingExercises) {
         ExercisesScreen(
             exercises = uiState.exerciseCatalog,
             customExerciseSets = uiState.customExerciseSets,
             selectedCustomSetId = uiState.selectedCustomSetId,
             selectedExerciseIds = uiState.selectedExerciseIds,
-            onBackClick = { viewModel.onEvent(StartWorkoutUiEvent.CloseExercisePickerClick) },
+            onBackClick = {
+                if (openAddExerciseOnStart) {
+                    onBackClick()
+                } else {
+                    viewModel.onEvent(StartWorkoutUiEvent.CloseExercisePickerClick)
+                }
+            },
             onExerciseToggle = { id ->
                 viewModel.onEvent(StartWorkoutUiEvent.ToggleExerciseSelection(id))
             },
@@ -154,114 +149,25 @@ fun StartWorkoutRoute(
         )
     } else {
         StartWorkoutScreen(
-            uiState = uiState,
             onBackClick = {
                 viewModel.onEvent(StartWorkoutUiEvent.BackClick)
                 onBackClick()
             },
-            onStartWorkoutClick = {
-                viewModel.onEvent(StartWorkoutUiEvent.StartWorkoutClick)
-            },
-            onShortenSessionClick = {
-                viewModel.onEvent(StartWorkoutUiEvent.ShortenSessionClick)
-                onShortenSessionClick()
-            },
-            onEditWorkoutClick = {
-                viewModel.onEvent(StartWorkoutUiEvent.EditWorkoutClick)
-                onEditWorkoutClick()
-            },
-            onExerciseClick = { exercise ->
-                viewModel.onEvent(StartWorkoutUiEvent.ExerciseClick(exercise.id))
-                onExerciseClick(exercise)
-            },
-            onExerciseWeightClick = { exercise ->
-                targetEditor = ExerciseTargetEditorState(
-                    exerciseId = exercise.id,
-                    exerciseName = exercise.name,
-                    field = EditableTargetField.Weight,
-                    currentValue = exercise.targetWeightKg
-                )
-            },
-            onExerciseRepsClick = { exercise ->
-                targetEditor = ExerciseTargetEditorState(
-                    exerciseId = exercise.id,
-                    exerciseName = exercise.name,
-                    field = EditableTargetField.Reps,
-                    currentValue = exercise.targetReps
-                )
-            },
-            onExerciseCompleteOrSkip = { exercise ->
-                viewModel.onEvent(StartWorkoutUiEvent.CompleteOrSkipExercise(exercise.id))
-            },
-            onExerciseDelete = { exercise ->
-                viewModel.onEvent(StartWorkoutUiEvent.DeleteExercise(exercise.id))
-                coroutineScope.launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = "\"${exercise.name}\" removed",
-                        actionLabel = "Undo",
-                        withDismissAction = true,
-                        duration = SnackbarDuration.Short
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        viewModel.onEvent(StartWorkoutUiEvent.UndoDeleteExercise)
-                    }
-                }
-            },
             onAddExerciseClick = {
                 viewModel.onEvent(StartWorkoutUiEvent.AddExerciseClick)
             },
-            onRetryClick = { viewModel.onEvent(StartWorkoutUiEvent.RetryLoad) },
             snackbarHostState = snackbarHostState,
             onHomeClick = onHomeClick,
             onProgressClick = onProgressClick,
             onProfileClick = onProfileClick
         )
     }
-
-    targetEditor?.let { editor ->
-        ExerciseTargetInputDialog(
-            state = editor,
-            onDismiss = { targetEditor = null },
-            onSave = { newValue ->
-                when (editor.field) {
-                    EditableTargetField.Weight -> {
-                        viewModel.onEvent(
-                            StartWorkoutUiEvent.UpdateExerciseWeight(
-                                exerciseId = editor.exerciseId,
-                                weightKg = newValue
-                            )
-                        )
-                    }
-
-                    EditableTargetField.Reps -> {
-                        viewModel.onEvent(
-                            StartWorkoutUiEvent.UpdateExerciseReps(
-                                exerciseId = editor.exerciseId,
-                                reps = newValue
-                            )
-                        )
-                    }
-                }
-                targetEditor = null
-            }
-        )
-    }
 }
 
 @Composable
 fun StartWorkoutScreen(
-    uiState: StartWorkoutUiState,
     onBackClick: () -> Unit,
-    onStartWorkoutClick: () -> Unit,
-    onShortenSessionClick: () -> Unit,
-    onEditWorkoutClick: () -> Unit,
-    onExerciseClick: (WorkoutExerciseUiModel) -> Unit,
-    onExerciseWeightClick: (WorkoutExerciseUiModel) -> Unit = {},
-    onExerciseRepsClick: (WorkoutExerciseUiModel) -> Unit = {},
-    onExerciseCompleteOrSkip: (WorkoutExerciseUiModel) -> Unit,
-    onExerciseDelete: (WorkoutExerciseUiModel) -> Unit,
     onAddExerciseClick: () -> Unit,
-    onRetryClick: () -> Unit,
     snackbarHostState: SnackbarHostState,
     onHomeClick: () -> Unit,
     onProgressClick: () -> Unit,
@@ -283,88 +189,15 @@ fun StartWorkoutScreen(
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { innerPadding ->
-        when {
-            uiState.isLoading -> {
-                StartWorkoutLoadingState(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                )
-            }
-
-            uiState.isEmpty -> {
-                StartWorkoutEmptyState(
-                    onRetryClick = onRetryClick,
-                    onAddExerciseClick = onAddExerciseClick,
-                    onBackClick = onBackClick,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .padding(horizontal = StartWorkoutDimens.HorizontalPadding)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                )
-            }
-
-            else -> {
-                val plan = requireNotNull(uiState.workoutPlan)
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    contentPadding = PaddingValues(
-                        start = StartWorkoutDimens.HorizontalPadding,
-                        end = StartWorkoutDimens.HorizontalPadding,
-                        top = StartWorkoutDimens.HeaderTopPadding,
-                        bottom = StartWorkoutDimens.ContentBottomPadding
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(StartWorkoutDimens.SectionSpacing)
-                ) {
-                    item {
-                        HeaderSection(
-                            title = plan.headerTitle,
-                            subtitle = plan.headerSubtitle
-                        )
-                    }
-                    item {
-                        WorkoutStreakCard(
-                            streakInfo = plan.streakCard,
-                            basedOnPlanText = plan.basedOnPlanText
-                        )
-                    }
-                    item {
-                        SelectedWorkoutCard(
-                            title = plan.selectedWorkoutsTitle,
-                            durationText = plan.actualEstimatedDurationText(),
-                            badge = plan.selectedWorkoutBadge,
-                            exercises = plan.exercises,
-                            onEditClick = onEditWorkoutClick,
-                            onExerciseClick = onExerciseClick,
-                            onExerciseWeightClick = onExerciseWeightClick,
-                            onExerciseRepsClick = onExerciseRepsClick,
-                            onExerciseCompleteOrSkip = onExerciseCompleteOrSkip,
-                            onExerciseDelete = onExerciseDelete,
-                            onAddExerciseClick = onAddExerciseClick
-                        )
-                    }
-                    item {
-                        SessionActionsRow(
-                            swapCard = plan.swapExerciseCard,
-                            shortenCard = plan.shortenSessionCard,
-                            onSwapClick = onAddExerciseClick,
-                            onShortenClick = onShortenSessionClick
-                        )
-                    }
-                    item {
-                        StartWorkoutPrimaryButton(
-                            text = plan.primaryCtaText,
-                            onClick = onStartWorkoutClick,
-                            enabled = !uiState.isStartingWorkout
-                        )
-                    }
-                }
-            }
-        }
+        StartWorkoutEmptyState(
+            onAddExerciseClick = onAddExerciseClick,
+            onBackClick = onBackClick,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = StartWorkoutDimens.HorizontalPadding)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+        )
     }
 }
 
@@ -834,62 +667,6 @@ private fun EditableTargetChip(
 }
 
 @Composable
-private fun ExerciseTargetInputDialog(
-    state: ExerciseTargetEditorState,
-    onDismiss: () -> Unit,
-    onSave: (Int) -> Unit
-) {
-    val minimumValue = if (state.field == EditableTargetField.Reps) 1 else 0
-    val fieldLabel = if (state.field == EditableTargetField.Weight) "Weight (kg)" else "Reps"
-    val dialogTitle = if (state.field == EditableTargetField.Weight) {
-        "Set weight for ${state.exerciseName}"
-    } else {
-        "Set reps for ${state.exerciseName}"
-    }
-
-    var input by remember(state) { mutableStateOf(state.currentValue.toString()) }
-    val parsedValue = input.toIntOrNull()
-    val isValid = parsedValue != null && parsedValue >= minimumValue
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = dialogTitle,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    color = StartWorkoutPrimaryText,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-        },
-        text = {
-            OutlinedTextField(
-                value = input,
-                onValueChange = { newValue ->
-                    input = newValue.filter { it.isDigit() }
-                },
-                label = { Text(fieldLabel) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onSave(requireNotNull(parsedValue)) },
-                enabled = isValid
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@Composable
 private fun SessionActionsRow(
     swapCard: WorkoutInfoCardUiModel,
     shortenCard: WorkoutInfoCardUiModel,
@@ -1031,35 +808,7 @@ private fun AddExerciseAction(
     }
 }
 @Composable
-private fun StartWorkoutLoadingState(
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            CircularProgressIndicator(
-                color = StartWorkoutPrimary,
-                trackColor = StartWorkoutCardBackground
-            )
-            Text(
-                text = "Preparing your workout...",
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    color = StartWorkoutPrimaryText,
-                    fontWeight = FontWeight.Medium
-                )
-            )
-        }
-    }
-}
-
-@Composable
 private fun StartWorkoutEmptyState(
-    onRetryClick: () -> Unit,
     onAddExerciseClick: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -1296,90 +1045,14 @@ private fun BottomNavItem(
 
 @Preview(showBackground = true, widthDp = 402, heightDp = 868)
 @Composable
-private fun StartWorkoutScreenPreview() {
-    StartWorkoutScreen(
-        uiState = StartWorkoutFakeStateProvider.contentState(),
-        onBackClick = {},
-        onStartWorkoutClick = {},
-        onShortenSessionClick = {},
-        onEditWorkoutClick = {},
-        onExerciseClick = {},
-        onExerciseCompleteOrSkip = {},
-        onExerciseDelete = {},
-        onAddExerciseClick = {},
-        onRetryClick = {},
-        snackbarHostState = SnackbarHostState(),
-        onHomeClick = {},
-        onProgressClick = {},
-        onProfileClick = {}
-    )
-}
-
-@Preview(showBackground = true, widthDp = 402, heightDp = 868)
-@Composable
-private fun StartWorkoutScreenLoadingPreview() {
-    StartWorkoutScreen(
-        uiState = StartWorkoutFakeStateProvider.loadingState(),
-        onBackClick = {},
-        onStartWorkoutClick = {},
-        onShortenSessionClick = {},
-        onEditWorkoutClick = {},
-        onExerciseClick = {},
-        onExerciseCompleteOrSkip = {},
-        onExerciseDelete = {},
-        onAddExerciseClick = {},
-        onRetryClick = {},
-        snackbarHostState = SnackbarHostState(),
-        onHomeClick = {},
-        onProgressClick = {},
-        onProfileClick = {}
-    )
-}
-
-@Preview(showBackground = true, widthDp = 402, heightDp = 868)
-@Composable
 private fun StartWorkoutScreenEmptyPreview() {
     StartWorkoutScreen(
-        uiState = StartWorkoutFakeStateProvider.emptyState(),
         onBackClick = {},
-        onStartWorkoutClick = {},
-        onShortenSessionClick = {},
-        onEditWorkoutClick = {},
-        onExerciseClick = {},
-        onExerciseCompleteOrSkip = {},
-        onExerciseDelete = {},
         onAddExerciseClick = {},
-        onRetryClick = {},
         snackbarHostState = SnackbarHostState(),
         onHomeClick = {},
         onProgressClick = {},
         onProfileClick = {}
-    )
-}
-
-@Preview(showBackground = true, widthDp = 380)
-@Composable
-private fun WorkoutStreakCardPreview() {
-    WorkoutStreakCard(
-        streakInfo = StartWorkoutFakeStateProvider.defaultPlan(isShortened = false).streakCard,
-        basedOnPlanText = "From your Upper Body plan"
-    )
-}
-
-@Preview(showBackground = true, widthDp = 380)
-@Composable
-private fun SelectedWorkoutCardPreview() {
-    val plan = StartWorkoutFakeStateProvider.defaultPlan(isShortened = false)
-    SelectedWorkoutCard(
-        title = plan.selectedWorkoutsTitle,
-        durationText = plan.actualEstimatedDurationText(),
-        badge = plan.selectedWorkoutBadge,
-        exercises = plan.exercises,
-        onEditClick = {},
-        onExerciseClick = {},
-        onExerciseCompleteOrSkip = {},
-        onExerciseDelete = {},
-        onAddExerciseClick = {}
     )
 }
 

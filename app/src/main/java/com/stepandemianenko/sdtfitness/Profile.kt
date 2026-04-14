@@ -60,6 +60,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
+import com.stepandemianenko.sdtfitness.data.AppGraph
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.Image
@@ -84,8 +86,16 @@ class Profile : ComponentActivity() {
     }
 
     private fun openWorkoutWithoutAnimation() {
-        startActivity(Intent(this, StartWorkout::class.java))
-        overridePendingTransition(0, 0)
+        lifecycleScope.launch {
+            val activeSessionId = AppGraph.workoutSessionRepository(this@Profile).getActiveSessionId()
+            val intent = if (activeSessionId != null) {
+                OngoingWorkout.createIntent(this@Profile, activeSessionId)
+            } else {
+                StartWorkout.createIntent(this@Profile)
+            }
+            startActivity(intent)
+            overridePendingTransition(0, 0)
+        }
     }
 
     private fun openProgressWithoutAnimation() {

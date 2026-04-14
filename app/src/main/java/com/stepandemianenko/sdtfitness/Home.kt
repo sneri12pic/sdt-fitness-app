@@ -71,6 +71,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
+import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.home.DailyGoalSummaryState
 import com.stepandemianenko.sdtfitness.home.DailyQuestState
 import com.stepandemianenko.sdtfitness.home.DebugAccountUiModel
@@ -114,8 +116,16 @@ class Home : ComponentActivity() {
     }
 
     private fun openStartWorkoutWithoutAnimation() {
-        startActivity(Intent(this, StartWorkout::class.java))
-        overridePendingTransition(0, 0)
+        lifecycleScope.launch {
+            val activeSessionId = AppGraph.workoutSessionRepository(this@Home).getActiveSessionId()
+            val intent = if (activeSessionId != null) {
+                OngoingWorkout.createIntent(this@Home, activeSessionId)
+            } else {
+                StartWorkout.createIntent(this@Home)
+            }
+            startActivity(intent)
+            overridePendingTransition(0, 0)
+        }
     }
 
     private fun openProgressWithoutAnimation() {
