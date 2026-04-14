@@ -63,10 +63,13 @@ private val ProgressTargetPlaceholder = Color(0xA0A67B6C)
 private val ProgressSelectionBg = Color(0xFFFDEDE7)
 private val ProgressRangeChipBg = Color(0xFFEBCBC0)
 
-private enum class ChartRangeMode(val label: String) {
-    CLOSE("Close"),
-    AUTO("Auto"),
-    FULL("Full")
+private enum class ChartRangeMode(
+    val label: String,
+    val scalePercent: Int
+) {
+    CLOSE("Close", 25),
+    AUTO("Auto", 50),
+    FULL("Full", 100)
 }
 
 private enum class ChartMetricKind {
@@ -191,7 +194,7 @@ fun ExerciseSetMetricChart(
         )
     }
 
-    var selectedPointIndex by remember { mutableIntStateOf(-1) }
+    var selectedPointIndex by remember { mutableIntStateOf(if (chart.actualValues.isNotEmpty()) 0 else -1) }
     var graphSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
     val leftPaddingPx = with(density) { 8.dp.toPx() }
@@ -226,7 +229,7 @@ fun ExerciseSetMetricChart(
     }
 
     LaunchedEffect(chart.actualValues) {
-        selectedPointIndex = -1
+        selectedPointIndex = if (chart.actualValues.isNotEmpty()) 0 else -1
     }
 
     Column(
@@ -449,7 +452,7 @@ fun ExerciseSetMetricChart(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "${chart.unitLabel} • ${rangeMode.label}",
+                text = "${chart.unitLabel} • ${rangeMode.scalePercent}% scale",
                 color = ProgressSecondaryText,
                 fontSize = 12.sp,
                 lineHeight = 12.sp
@@ -475,6 +478,13 @@ private fun RangeModeControl(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Text(
+            text = "Scale:",
+            color = ProgressSecondaryText,
+            fontSize = 12.sp,
+            lineHeight = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
         ChartRangeMode.values().forEach { mode ->
             val isSelected = mode == selectedMode
             Box(
@@ -485,7 +495,7 @@ private fun RangeModeControl(
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 Text(
-                    text = mode.label,
+                    text = "${mode.scalePercent}%",
                     color = if (isSelected) Color(0xFFFDEDE7) else ProgressSecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 12.sp,
@@ -754,12 +764,11 @@ private fun formatAxisValue(
 }
 
 private fun formatWeightValue(value: Float): String {
-    val snapped = snapToStep(value, 2.5f)
-    return if (abs(snapped - snapped.roundToInt().toFloat()) < 0.001f) {
-        snapped.roundToInt().toString()
-    } else {
-        String.format(Locale.ENGLISH, "%.1f", snapped)
+    val roundedInt = value.roundToInt().toFloat()
+    if (abs(value - roundedInt) < 0.001f) {
+        return roundedInt.toInt().toString()
     }
+    return String.format(Locale.ENGLISH, "%.2f", value).trimEnd('0').trimEnd('.')
 }
 
 private fun formatGenericValue(value: Float): String {
@@ -768,14 +777,6 @@ private fun formatGenericValue(value: Float): String {
     } else {
         String.format(Locale.ENGLISH, "%.1f", value)
     }
-}
-
-private fun snapToStep(
-    value: Float,
-    step: Float
-): Float {
-    if (step <= 0f) return value
-    return (value / step).roundToInt() * step
 }
 
 @Composable

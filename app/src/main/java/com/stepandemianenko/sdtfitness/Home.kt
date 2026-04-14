@@ -36,6 +36,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -146,7 +147,6 @@ private val PrimaryText = Color(0xFF4F2912)
 private val SecondaryText = Color(0xFF6B4637)
 private val SoftGreen = Color(0xFF69C47A)
 private val SoftOrange = Color(0xFFF05C2D)
-private val DotGreen = Color(0xFF8ACA8A)
 private val ProgressTrack = Color(0xFFE6B8A5)
 private val BottomBarBg = Color(0xFFF5E5DA)
 private val InactiveIcon = Color(0xFFC48778)
@@ -221,6 +221,7 @@ fun HomeOneScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val restDayLoggedMessage = stringResource(id = R.string.rest_day_logged_message)
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -279,6 +280,9 @@ fun HomeOneScreen(
                                 onSaveRestDay = {
                                     onSaveRecoveryOption(RecoveryOption.REST_DAY)
                                     activeScreen = HomeScreen.Dashboard
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(message = restDayLoggedMessage)
+                                    }
                                 },
                                 onBackClick = { activeScreen = HomeScreen.Dashboard }
                             )
@@ -308,6 +312,14 @@ fun HomeOneScreen(
 
                 SnackbarHost(
                     hostState = snackbarHostState,
+                    snackbar = { snackbarData ->
+                        Snackbar(
+                            snackbarData = snackbarData,
+                            containerColor = ActionColor.copy(alpha = 0.85f),
+                            contentColor = Color(0xFFFCE8DA),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
@@ -392,7 +404,7 @@ private fun DashboardContent(
     SectionHeader(title = "Today's Plan", action = "Edit")
     PlanRow(
         title = "Gym Session",
-        subtitle = "Upper Body  •  45 min",
+        subtitle = "Start the session that fits today",
         icon = {
             CircleIconContainer(iconRes = R.drawable.home_workout_thumb)
         },
@@ -853,22 +865,13 @@ private fun DailyProgressCard(
                     lineHeight = 16.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(DotGreen)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${summary.activeMinutesCurrent} / ${summary.activeMinutesTarget} active min",
-                        color = SecondaryText,
-                        fontSize = 14.sp,
-                        lineHeight = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                Text(
+                    text = "${summary.activeMinutesCurrent} / ${summary.activeMinutesTarget} active min",
+                    color = SecondaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
