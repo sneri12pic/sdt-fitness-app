@@ -180,4 +180,23 @@ interface SessionSetLogDao {
         removedSetNumber: Int,
         updatedAt: Long
     )
+
+    @Query(
+        """
+        UPDATE session_set_logs
+        SET setNumber = setNumber + 1,
+            updatedAt = :updatedAt
+        WHERE accountId = :accountId
+          AND sessionId = :sessionId
+          AND sessionExerciseId = :sessionExerciseId
+          AND setNumber >= :insertAtSetNumber
+        """
+    )
+    suspend fun shiftSetNumbersUpFrom(
+        accountId: String,
+        sessionId: Long,
+        sessionExerciseId: Long,
+        insertAtSetNumber: Int,
+        updatedAt: Long
+    )
 }

@@ -12,6 +12,9 @@ interface SessionExerciseDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAll(exercises: List<SessionExerciseEntity>): List<Long>
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(exercise: SessionExerciseEntity): Long
+
     @Query(
         """
         SELECT * FROM session_exercises
@@ -62,6 +65,52 @@ interface SessionExerciseDao {
         accountId: String,
         sessionExerciseId: Long,
         targetSets: Int,
+        updatedAt: Long
+    )
+
+    @Query(
+        """
+        DELETE FROM session_exercises
+        WHERE accountId = :accountId
+          AND id = :sessionExerciseId
+        """
+    )
+    suspend fun deleteById(
+        accountId: String,
+        sessionExerciseId: Long
+    )
+
+    @Query(
+        """
+        UPDATE session_exercises
+        SET exerciseOrder = exerciseOrder - 1,
+            updatedAt = :updatedAt
+        WHERE accountId = :accountId
+          AND sessionId = :sessionId
+          AND exerciseOrder > :removedOrder
+        """
+    )
+    suspend fun shiftExerciseOrderDownAfter(
+        accountId: String,
+        sessionId: Long,
+        removedOrder: Int,
+        updatedAt: Long
+    )
+
+    @Query(
+        """
+        UPDATE session_exercises
+        SET exerciseOrder = exerciseOrder + 1,
+            updatedAt = :updatedAt
+        WHERE accountId = :accountId
+          AND sessionId = :sessionId
+          AND exerciseOrder >= :fromOrder
+        """
+    )
+    suspend fun shiftExerciseOrderUpFrom(
+        accountId: String,
+        sessionId: Long,
+        fromOrder: Int,
         updatedAt: Long
     )
 }
