@@ -4,42 +4,47 @@ SDT Fitness App is an Android workout tracker built with Kotlin and Jetpack Comp
 
 ## Screenshots
 
+Current prototype screens from the main app flow.
+
 <table>
   <tr>
     <td align="center"><strong>Home</strong></td>
-    <td align="center"><strong>Home dashboard</strong></td>
+    <td align="center"><strong>Routine</strong></td>
+    <td align="center"><strong>Empty workout</strong></td>
   </tr>
   <tr>
     <td><img src="docs/images/readme/home.jpg" width="220" alt="Home screen"></td>
-    <td><img src="docs/images/readme/home2.jpg" width="220" alt="Home dashboard screen"></td>
+    <td><img src="docs/images/readme/home-routine.jpg" width="220" alt="Home routine screen"></td>
+    <td><img src="docs/images/readme/empty-workout.jpg" width="220" alt="Empty workout screen"></td>
   </tr>
   <tr>
-    <td align="center"><strong>Ongoing workout</strong></td>
-    <td align="center"><strong>Workout logging</strong></td>
+    <td align="center"><strong>Add exercise</strong></td>
+    <td align="center"><strong>Filtered exercises</strong></td>
+    <td align="center"><strong>Log workout</strong></td>
   </tr>
   <tr>
-    <td><img src="docs/images/readme/OngoingWorkout.jpg" width="220" alt="Ongoing workout screen"></td>
-    <td><img src="docs/images/readme/OngoingWorkout2.jpg" width="220" alt="Workout set logging screen"></td>
-    <td><img src="docs/images/readme/AddExercise.jpg" width="220" alt="Add exercise screen"></td>
+    <td><img src="docs/images/readme/add-exercise.jpg" width="220" alt="Add exercise screen"></td>
+    <td><img src="docs/images/readme/add-exercise-filtered.jpg" width="220" alt="Filtered exercises screen"></td>
+    <td><img src="docs/images/readme/log-workout.jpg" width="220" alt="Log workout screen"></td>
   </tr>
   <tr>
-    <td align="center"><strong>Exercise selected</strong></td>
     <td align="center"><strong>Progress</strong></td>
-    <td align="center"><strong>Progress details</strong></td>
-  </tr>
-  <tr>
-    <td><img src="docs/images/readme/AddExerciseSelected.jpg" width="220" alt="Selected exercise screen"></td>
-    <td><img src="docs/images/readme/Progress.jpg" width="220" alt="Progress overview screen"></td>
-    <td><img src="docs/images/readme/Progress2.jpg" width="220" alt="Progress details screen"></td>
-  </tr>
-  <tr>
+    <td align="center"><strong>Health metrics</strong></td>
     <td align="center"><strong>Completed sessions</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/readme/progress-overview.jpg" width="220" alt="Progress overview screen"></td>
+    <td><img src="docs/images/readme/progress-health.jpg" width="220" alt="Health metrics screen"></td>
+    <td><img src="docs/images/readme/completed-sessions.jpg" width="220" alt="Completed sessions screen"></td>
+  </tr>
+  <tr>
     <td align="center"><strong>Session review</strong></td>
+    <td></td>
     <td></td>
   </tr>
   <tr>
-    <td><img src="docs/images/readme/progress-sessionsCompleted.jpg" width="220" alt="Completed sessions screen"></td>
-    <td><img src="docs/images/readme/progress-sessionsCompleted-session.jpg" width="220" alt="Completed session review screen"></td>
+    <td><img src="docs/images/readme/session-review.jpg" width="220" alt="Completed session review screen"></td>
+    <td></td>
     <td></td>
   </tr>
 </table>
@@ -47,8 +52,8 @@ SDT Fitness App is an Android workout tracker built with Kotlin and Jetpack Comp
 ## Features
 
 - Home dashboard with daily goal progress, today's plan, daily step quest, routine calendar, quick log, and rest day logging.
-- Workout setup flow with exercise selection, adjustable weight and reps, session shortening, and custom exercise sets.
-- Ongoing workout tracking with set completion, exercise progress, exercise deletion, and add-exercise support during an active session.
+- Workout flow with an empty-state prompt, exercise search/filtering, custom exercise sets, and active set logging.
+- Active workout tracking with set completion, exercise progress, exercise deletion, and add-exercise support during a session.
 - Progress area with completed sessions, best lift, volume, session load, achievements, and completed-session review.
 - Optional Health Connect integration for reading steps and weight.
 - Local, account-scoped persistence using Room.
