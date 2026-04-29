@@ -8,7 +8,6 @@ SDT Fitness App is an Android workout tracker built with Kotlin and Jetpack Comp
   <tr>
     <td align="center"><strong>Home</strong></td>
     <td align="center"><strong>Home dashboard</strong></td>
-    <td align="center"><strong>Workout setup</strong></td>
   </tr>
   <tr>
     <td><img src="docs/images/readme/home.jpg" width="220" alt="Home screen"></td>
