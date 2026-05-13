@@ -105,6 +105,8 @@ class Profile : ComponentActivity() {
 }
 
 private val ProfileBackground = Color(0xFFEBC0B0)
+
+private val BottomBarBg = Color(0xFFF5E5DA)
 private val ProfileCardBackground = Color(0xFFF5E5DA)
 private val ProfilePrimaryText = Color(0xFF4F2912)
 private val ProfileSecondaryText = Color(0xFF6B4637)
@@ -293,8 +295,8 @@ private fun ProfileOverviewContent(
     Text(
         text = "Profile",
         color = ProfilePrimaryText,
-        fontSize = 34.sp,
-        lineHeight = 34.sp,
+        fontSize = 40.sp,
+        lineHeight = 40.sp,
         fontWeight = FontWeight.Bold
     )
     Text(
@@ -791,47 +793,42 @@ private fun ProfileBottomNavigationBar(
     onProgressClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = ProfileBottomInsetCorner, topEnd = ProfileBottomInsetCorner))
-            .background(ProfileBottomBarBg)
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ProfileBottomNavItem(
-                    label = "Home",
-                    icon = R.drawable.home_nav_home,
-                    textColor = ProfileInactiveIcon,
-                    onClick = onHomeClick
-                )
-                ProfileBottomNavItem(
-                    label = "Workout",
-                    icon = R.drawable.home_nav_workout,
-                    textColor = ProfileInactiveIcon,
-                    onClick = onWorkoutClick
-                )
-                ProfileBottomNavItem(
-                    label = "Progress",
-                    icon = R.drawable.home_nav_progress,
-                    textColor = ProfileInactiveIcon,
-                    onClick = onProgressClick
-                )
-                ProfileBottomNavItem(
-                    label = "Profile",
-                    icon = R.drawable.home_nav_profile,
-                    textColor = ProfilePrimaryText,
-                    onClick = onProfileClick
-                )
-            }
-            Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .background(BottomBarBg)
+                .fillMaxWidth()
+                .border(width = 1.dp, color = Color(0x80D6AA98))
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ProfileBottomNavItem(
+                label = "Home",
+                icon = R.drawable.home_nav_home,
+                textColor = ProfileInactiveIcon,
+                onClick = onHomeClick
+            )
+            ProfileBottomNavItem(
+                label = "Workout",
+                icon = R.drawable.home_nav_workout,
+                textColor = ProfileInactiveIcon,
+                onClick = onWorkoutClick
+            )
+            ProfileBottomNavItem(
+                label = "Progress",
+                icon = R.drawable.home_nav_progress,
+                textColor = ProfileInactiveIcon,
+                onClick = onProgressClick
+            )
+            ProfileBottomNavItem(
+                label = "Profile",
+                icon = R.drawable.home_nav_profile,
+                textColor = ProfileInactiveIcon,
+                onClick = onProfileClick
+            )
         }
+        Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     }
 }
 
