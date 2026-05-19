@@ -39,7 +39,9 @@ object SetLogSource {
     tableName = "accounts",
     indices = [
         Index(value = ["isActive"]),
-        Index(value = ["createdAt"])
+        Index(value = ["createdAt"]),
+        Index(value = ["remoteUserId"]),
+        Index(value = ["authProvider", "remoteUserId"], unique = true)
     ]
 )
 data class AccountEntity(
@@ -47,7 +49,12 @@ data class AccountEntity(
     val type: String = AccountType.GUEST,
     val createdAt: Long,
     val isActive: Boolean = false,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val remoteUserId: String? = null,
+    val email: String? = null,
+    val displayName: String? = null,
+    val authProvider: String? = null,
+    val lastLoginAt: Long? = null
 )
 
 @Entity(

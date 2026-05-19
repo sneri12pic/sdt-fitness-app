@@ -28,7 +28,12 @@ data class AccountSummary(
     val id: String,
     val type: String,
     val createdAt: Long,
-    val isActive: Boolean
+    val isActive: Boolean,
+    val remoteUserId: String?,
+    val email: String?,
+    val displayName: String?,
+    val authProvider: String?,
+    val lastLoginAt: Long?
 )
 
 data class AccountScopeKey(
@@ -71,6 +76,90 @@ class AccountSessionManager(
     }
 
     fun observeAccounts(): Flow<List<AccountEntity>> = accountDao.observeAllAccounts()
+
+    suspend fun linkAuthenticatedAccountAndSwitch(
+        remoteUserId: String,
+        email: String,
+        displayName: String?,
+        authProvider: String
+    ): String {
+        val now = System.currentTimeMillis()
+        val normalizedEmail = email.trim()
+        val normalizedProvider = authProvider.trim().ifBlank { DEFAULT_AUTH_PROVIDER }
+        val accountId = database.withTransaction {
+            val existing = accountDao.getByRemoteIdentity(
+                authProvider = normalizedProvider,
+                remoteUserId = remoteUserId
+            )
+
+            val resolvedAccountId = existing?.id ?: UUID.randomUUID().toString().also { newAccountId ->
+                accountDao.insert(
+                    AccountEntity(
+                        id = newAccountId,
+                        type = AccountType.AUTH,
+                        createdAt = now,
+                        isActive = false,
+                        updatedAt = now,
+                        remoteUserId = remoteUserId,
+                        email = normalizedEmail,
+                        displayName = displayName,
+                        authProvider = normalizedProvider,
+                        lastLoginAt = now
+                    )
+                )
+                ensureUserSettings(accountId = newAccountId, now = now)
+            }
+
+            accountDao.updateAuthProfile(
+                accountId = resolvedAccountId,
+                type = AccountType.AUTH,
+                remoteUserId = remoteUserId,
+                email = normalizedEmail,
+                displayName = displayName,
+                authProvider = normalizedProvider,
+                lastLoginAt = now,
+                updatedAt = now
+            )
+            accountDao.deactivateAll(updatedAt = now)
+            accountDao.activate(accountId = resolvedAccountId, updatedAt = now)
+            ensureUserSettings(accountId = resolvedAccountId, now = now)
+            resolvedAccountId
+        }
+
+        _activeAccountId.value = accountId
+        bumpScopeRevision()
+        return accountId
+    }
+
+    suspend fun switchToGuestAccount(): String {
+        val now = System.currentTimeMillis()
+        val accountId = database.withTransaction {
+            val guest = accountDao.getAllAccounts()
+                .filter { it.type == AccountType.GUEST }
+                .maxByOrNull { it.createdAt }
+
+            val resolvedAccountId = guest?.id ?: UUID.randomUUID().toString().also { guestId ->
+                accountDao.insert(
+                    AccountEntity(
+                        id = guestId,
+                        type = AccountType.GUEST,
+                        createdAt = now,
+                        isActive = false,
+                        updatedAt = now
+                    )
+                )
+            }
+
+            accountDao.deactivateAll(updatedAt = now)
+            accountDao.activate(accountId = resolvedAccountId, updatedAt = now)
+            ensureUserSettings(accountId = resolvedAccountId, now = now)
+            resolvedAccountId
+        }
+
+        _activeAccountId.value = accountId
+        bumpScopeRevision()
+        return accountId
+    }
 
     suspend fun createTestUserAndSwitch(): String {
         val now = System.currentTimeMillis()
@@ -181,11 +270,20 @@ class AccountSessionManager(
             id = id,
             type = type,
             createdAt = createdAt,
-            isActive = isActive
+            isActive = isActive,
+            remoteUserId = remoteUserId,
+            email = email,
+            displayName = displayName,
+            authProvider = authProvider,
+            lastLoginAt = lastLoginAt
         )
     }
 
     private fun bumpScopeRevision() {
         _scopeRevision.update { current -> current + 1L }
+    }
+
+    private companion object {
+        const val DEFAULT_AUTH_PROVIDER = "password"
     }
 }

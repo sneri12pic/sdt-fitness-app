@@ -29,8 +29,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -61,6 +66,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import com.stepandemianenko.sdtfitness.auth.ui.AuthGateActivity
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -74,7 +80,8 @@ class Profile : ComponentActivity() {
                 ProfileRoute(
                     onHomeClick = { openHomeWithoutAnimation() },
                     onWorkoutClick = { openWorkoutWithoutAnimation() },
-                    onProgressClick = { openProgressWithoutAnimation() }
+                    onProgressClick = { openProgressWithoutAnimation() },
+                    onSignOutClick = { signOutAndOpenAuthGate() }
                 )
             }
         }
@@ -102,6 +109,17 @@ class Profile : ComponentActivity() {
         startActivity(Intent(this, Progress::class.java))
         overridePendingTransition(0, 0)
     }
+
+    private fun signOutAndOpenAuthGate() {
+        lifecycleScope.launch {
+            AppGraph.authRepository(this@Profile).signOut()
+            val intent = Intent(this@Profile, AuthGateActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            startActivity(intent)
+            overridePendingTransition(0, 0)
+        }
+    }
 }
 
 private val ProfileBackground = Color(0xFFEBC0B0)
@@ -111,6 +129,7 @@ private val ProfileCardBackground = Color(0xFFF5E5DA)
 private val ProfilePrimaryText = Color(0xFF4F2912)
 private val ProfileSecondaryText = Color(0xFF6B4637)
 private val ProfileAccent = Color(0xFFF27F3E)
+private val ProfileDanger = Color(0xFFC62828)
 private val ProfileBottomBarBg = Color(0xFFF5E5DA)
 private val ProfileInactiveIcon = Color(0xFFC48778)
 private val ProfileContentMaxWidth = 360.dp
@@ -191,7 +210,8 @@ private val RoutineReminderOptions = listOf(
 fun ProfileRoute(
     onHomeClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
-    onProgressClick: () -> Unit = {}
+    onProgressClick: () -> Unit = {},
+    onSignOutClick: () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -201,6 +221,8 @@ fun ProfileRoute(
     var selectedFrequencyId by remember { mutableStateOf("3_days") }
     var selectedDayIds by remember { mutableStateOf(setOf("wed")) }
     var selectedReminderId by remember { mutableStateOf("evening") }
+    var isSettingsDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var isSignOutDialogOpen by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = activeScreen != ProfileScreen.Overview) {
         activeScreen = ProfileScreen.Overview
@@ -236,7 +258,8 @@ fun ProfileRoute(
                     ) {
                         when (activeScreen) {
                             ProfileScreen.Overview -> ProfileOverviewContent(
-                                onYourRoutineClick = { activeScreen = ProfileScreen.YourRoutine }
+                                onYourRoutineClick = { activeScreen = ProfileScreen.YourRoutine },
+                                onSettingsClick = { isSettingsDialogOpen = true }
                             )
 
                             ProfileScreen.YourRoutine -> RoutineSetupContent(
@@ -284,21 +307,55 @@ fun ProfileRoute(
                         .padding(bottom = reservedBottomHeight + 8.dp)
                 )
             }
+
+            if (isSettingsDialogOpen) {
+                ProfileSettingsDialog(
+                    onDismiss = { isSettingsDialogOpen = false },
+                    onSignOutClick = {
+                        isSettingsDialogOpen = false
+                        isSignOutDialogOpen = true
+                    }
+                )
+            }
+
+            if (isSignOutDialogOpen) {
+                SignOutConfirmationDialog(
+                    onDismiss = { isSignOutDialogOpen = false },
+                    onConfirm = {
+                        isSignOutDialogOpen = false
+                        onSignOutClick()
+                    }
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun ProfileOverviewContent(
-    onYourRoutineClick: () -> Unit
+    onYourRoutineClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
-    Text(
-        text = "Profile",
-        color = ProfilePrimaryText,
-        fontSize = 40.sp,
-        lineHeight = 40.sp,
-        fontWeight = FontWeight.Bold
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Profile",
+            color = ProfilePrimaryText,
+            fontSize = 40.sp,
+            lineHeight = 40.sp,
+            fontWeight = FontWeight.Bold
+        )
+        IconButton(onClick = onSettingsClick) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = "Profile settings",
+                tint = ProfilePrimaryText
+            )
+        }
+    }
     Text(
         text = "Settings and preferences",
         color = ProfileSecondaryText,
@@ -323,6 +380,95 @@ private fun ProfileOverviewContent(
             onClick = onYourRoutineClick
         )
     }
+}
+
+@Composable
+private fun ProfileSettingsDialog(
+    onDismiss: () -> Unit,
+    onSignOutClick: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ProfileCardBackground,
+        title = {
+            Text(
+                text = "Settings",
+                color = ProfilePrimaryText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Account",
+                    color = ProfileSecondaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Button(
+                    onClick = onSignOutClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ProfileDanger,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "Sign Out",
+                        fontSize = 16.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = ProfileSecondaryText)
+            }
+        }
+    )
+}
+
+@Composable
+private fun SignOutConfirmationDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ProfileCardBackground,
+        title = {
+            Text(
+                text = "Sign out?",
+                color = ProfilePrimaryText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = "You can sign back in anytime. Local guest data will stay on this device.",
+                color = ProfileSecondaryText
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(
+                    text = "Sign Out",
+                    color = ProfileDanger,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = ProfileSecondaryText)
+            }
+        }
+    )
 }
 
 /**

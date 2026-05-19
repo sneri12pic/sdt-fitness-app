@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 class WorkoutDatabaseMigrationTest {
 
     @Test
-    fun migrateFrom1To3_backfillsAccountAndScopesData() {
+    fun migrateFrom1To4_backfillsAccountAndScopesData() {
         runBlocking {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val dbName = "workout-migration-test"
@@ -134,7 +134,8 @@ class WorkoutDatabaseMigrationTest {
         val db = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
             .addMigrations(
                 WorkoutDatabase.MIGRATION_1_2,
-                WorkoutDatabase.MIGRATION_2_3
+                WorkoutDatabase.MIGRATION_2_3,
+                WorkoutDatabase.MIGRATION_3_4
             )
             .build()
 
@@ -143,6 +144,11 @@ class WorkoutDatabaseMigrationTest {
         val migratedAccount = db.accountDao().getActiveAccount()
         assertNotNull(migratedAccount)
         assertEquals(WorkoutDatabase.MIGRATED_DEFAULT_ACCOUNT_ID, migratedAccount?.id)
+        assertEquals(null, migratedAccount?.remoteUserId)
+        assertEquals(null, migratedAccount?.email)
+        assertEquals(null, migratedAccount?.displayName)
+        assertEquals(null, migratedAccount?.authProvider)
+        assertEquals(null, migratedAccount?.lastLoginAt)
 
         val migratedSessions = db.workoutSessionDao().getByStatus(
             accountId = WorkoutDatabase.MIGRATED_DEFAULT_ACCOUNT_ID,

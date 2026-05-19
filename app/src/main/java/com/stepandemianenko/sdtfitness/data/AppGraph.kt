@@ -1,6 +1,11 @@
 package com.stepandemianenko.sdtfitness.data
 
 import android.content.Context
+import com.stepandemianenko.sdtfitness.BuildConfig
+import com.stepandemianenko.sdtfitness.auth.data.AuthRepositoryImpl
+import com.stepandemianenko.sdtfitness.auth.data.HttpRemoteAuthDataSource
+import com.stepandemianenko.sdtfitness.auth.data.SecureSessionStore
+import com.stepandemianenko.sdtfitness.auth.domain.AuthRepository
 import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
 import com.stepandemianenko.sdtfitness.data.health.HealthConnectManager
 import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
@@ -23,6 +28,9 @@ object AppGraph {
 
     @Volatile
     private var healthConnectManager: HealthConnectManager? = null
+
+    @Volatile
+    private var authRepository: AuthRepository? = null
 
     fun accountSessionManager(context: Context): AccountSessionManager {
         return accountSessionManager ?: synchronized(this) {
@@ -63,6 +71,16 @@ object AppGraph {
         return healthConnectManager ?: synchronized(this) {
             healthConnectManager ?: HealthConnectManager(context)
                 .also { healthConnectManager = it }
+        }
+    }
+
+    fun authRepository(context: Context): AuthRepository {
+        return authRepository ?: synchronized(this) {
+            authRepository ?: AuthRepositoryImpl(
+                remoteAuthDataSource = HttpRemoteAuthDataSource(BuildConfig.AUTH_BASE_URL),
+                secureSessionStore = SecureSessionStore(context.applicationContext),
+                accountSessionManager = accountSessionManager(context)
+            ).also { authRepository = it }
         }
     }
 }

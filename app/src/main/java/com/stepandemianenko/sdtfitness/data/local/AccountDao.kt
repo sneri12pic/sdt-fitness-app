@@ -24,6 +24,15 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE id = :accountId LIMIT 1")
     suspend fun getById(accountId: String): AccountEntity?
 
+    @Query(
+        """
+        SELECT * FROM accounts
+        WHERE authProvider = :authProvider AND remoteUserId = :remoteUserId
+        LIMIT 1
+        """
+    )
+    suspend fun getByRemoteIdentity(authProvider: String, remoteUserId: String): AccountEntity?
+
     @Query("SELECT * FROM accounts ORDER BY createdAt DESC LIMIT 1")
     suspend fun getMostRecentAccount(): AccountEntity?
 
@@ -32,6 +41,30 @@ interface AccountDao {
 
     @Query("UPDATE accounts SET isActive = 1, updatedAt = :updatedAt WHERE id = :accountId")
     suspend fun activate(accountId: String, updatedAt: Long)
+
+    @Query(
+        """
+        UPDATE accounts
+        SET type = :type,
+            remoteUserId = :remoteUserId,
+            email = :email,
+            displayName = :displayName,
+            authProvider = :authProvider,
+            lastLoginAt = :lastLoginAt,
+            updatedAt = :updatedAt
+        WHERE id = :accountId
+        """
+    )
+    suspend fun updateAuthProfile(
+        accountId: String,
+        type: String,
+        remoteUserId: String,
+        email: String,
+        displayName: String?,
+        authProvider: String,
+        lastLoginAt: Long,
+        updatedAt: Long
+    )
 
     @Query("DELETE FROM accounts WHERE id = :accountId")
     suspend fun deleteById(accountId: String)

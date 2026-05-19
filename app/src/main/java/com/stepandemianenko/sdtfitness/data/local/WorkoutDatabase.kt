@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionExerciseEntity::class,
         SessionSetLogEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class WorkoutDatabase : RoomDatabase() {
@@ -299,6 +299,18 @@ abstract class WorkoutDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `remoteUserId` TEXT")
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `email` TEXT")
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `displayName` TEXT")
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `authProvider` TEXT")
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `lastLoginAt` INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_accounts_remoteUserId` ON `accounts` (`remoteUserId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_accounts_authProvider_remoteUserId` ON `accounts` (`authProvider`, `remoteUserId`)")
+            }
+        }
+
         fun getInstance(context: Context): WorkoutDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -306,7 +318,7 @@ abstract class WorkoutDatabase : RoomDatabase() {
                     WorkoutDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }

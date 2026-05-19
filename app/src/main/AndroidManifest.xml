@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
@@ -17,7 +18,8 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SDTFitnessApp">
+        android:theme="@style/Theme.SDTFitnessApp"
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".PermissionsRationaleActivity"
             android:exported="true">
@@ -69,6 +71,12 @@
             android:theme="@style/Theme.SDTFitnessApp" />
         <activity
             android:name=".Home"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.SDTFitnessApp" />
+
+        <activity
+            android:name=".auth.ui.AuthGateActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.SDTFitnessApp">

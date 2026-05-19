@@ -135,7 +135,7 @@ class LogWorkoutViewModel(
                         snapshot.status == WorkoutSessionStatus.COMPLETED &&
                         completionEffectSessionId != snapshot.sessionId
                     ) {
-                        homeRepository.setTodayWorkoutCompleted(completed = true)
+                        syncCompletedWorkoutWithHome(snapshot)
                         _effects.emit(LogWorkoutEffect.NavigateToProgress(snapshot.sessionId))
                         completionEffectSessionId = snapshot.sessionId
                     }
@@ -194,10 +194,14 @@ class LogWorkoutViewModel(
     }
 
     private fun finishWorkout() {
-        val sessionId = latestSnapshot?.sessionId ?: return
+        val snapshot = latestSnapshot ?: return
+        val sessionId = snapshot.sessionId
         viewModelScope.launch {
             if (repository.completeSession(sessionId)) {
-                homeRepository.setTodayWorkoutCompleted(completed = true)
+                syncCompletedWorkoutWithHome(
+                    startedAt = snapshot.startedAt,
+                    completedAt = System.currentTimeMillis()
+                )
                 _effects.emit(LogWorkoutEffect.NavigateToProgress(sessionId))
                 completionEffectSessionId = sessionId
             }
@@ -272,7 +276,10 @@ class LogWorkoutViewModel(
 
             if (outcome is LogSetOutcome.SessionCompleted) {
                 completionEffectSessionId = outcome.sessionId
-                homeRepository.setTodayWorkoutCompleted(completed = true)
+                syncCompletedWorkoutWithHome(
+                    startedAt = snapshot.startedAt,
+                    completedAt = System.currentTimeMillis()
+                )
                 _effects.emit(LogWorkoutEffect.NavigateToProgress(outcome.sessionId))
             }
         }
@@ -1090,6 +1097,22 @@ class LogWorkoutViewModel(
             else -> -2
         }
         return (currentWeightKg + adjustment).coerceAtLeast(0)
+    }
+
+    private fun syncCompletedWorkoutWithHome(snapshot: LogWorkoutSessionSnapshot) {
+        val completionTime = snapshot.completedAt ?: System.currentTimeMillis()
+        syncCompletedWorkoutWithHome(
+            startedAt = snapshot.startedAt,
+            completedAt = completionTime
+        )
+    }
+
+    private fun syncCompletedWorkoutWithHome(startedAt: Long, completedAt: Long) {
+        val activeMinutes = ((completedAt - startedAt).coerceAtLeast(0L) / 60_000L)
+            .toInt()
+            .coerceAtLeast(1)
+        homeRepository.setTodayWorkoutCompleted(completed = true)
+        homeRepository.setTodayActiveMinutes(minutes = activeMinutes)
     }
 
     private fun formatDuration(startedAt: Long, now: Long): String {

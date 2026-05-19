@@ -25,6 +25,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "String",
+            "AUTH_BASE_URL",
+            "\"${providers.gradleProperty("SDT_AUTH_BASE_URL").orElse("").get()}\""
+        )
     }
 
     buildTypes {
@@ -64,6 +69,8 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.health.connect)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler)
