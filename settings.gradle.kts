@@ -21,4 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "SDT Fitness App"
 include(":app")
+include(":auth-api")
  
