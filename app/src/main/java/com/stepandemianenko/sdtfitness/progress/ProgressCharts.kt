@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -84,6 +85,11 @@ data class SetMetricChartUiModel(
     val actualValues: List<Float>,
     val targetValues: List<Float?>,
     val unitLabel: String
+)
+
+data class DailyStepsBarChartPoint(
+    val dateLabel: String,
+    val steps: Int
 )
 
 @Composable
@@ -170,6 +176,98 @@ private fun WeeklyComparisonBar(
             color = ProgressSecondaryText,
             fontSize = 12.sp,
             lineHeight = 13.sp
+        )
+    }
+}
+
+@Composable
+fun DailyStepsBarChart(
+    points: List<DailyStepsBarChartPoint>,
+    modifier: Modifier = Modifier
+) {
+    val safePoints = points.ifEmpty {
+        listOf(DailyStepsBarChartPoint(dateLabel = "Today", steps = 0))
+    }
+    val maxSteps = safePoints.maxOfOrNull { it.steps }?.coerceAtLeast(1) ?: 1
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Daily Steps",
+            color = ProgressPrimaryText,
+            fontSize = 14.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(190.dp)
+                .background(color = ProgressTileBackground, shape = RoundedCornerShape(12.dp))
+                .padding(horizontal = 10.dp, vertical = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                safePoints.forEach { point ->
+                    DailyStepsBar(
+                        modifier = Modifier.weight(1f),
+                        point = point,
+                        maxSteps = maxSteps
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyStepsBar(
+    modifier: Modifier,
+    point: DailyStepsBarChartPoint,
+    maxSteps: Int
+) {
+    val heightFraction = (point.steps.toFloat() / maxSteps.toFloat()).coerceIn(0f, 1f)
+    Column(
+        modifier = modifier.fillMaxHeight(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom
+    ) {
+        Text(
+            text = "%,d".format(point.steps.coerceAtLeast(0)),
+            color = ProgressPrimaryText,
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Box(
+            modifier = Modifier
+                .padding(top = 5.dp, bottom = 6.dp)
+                .width(26.dp)
+                .weight(1f)
+                .background(color = ProgressRangeChipBg, shape = RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(heightFraction)
+                    .background(color = ProgressAccent, shape = RoundedCornerShape(8.dp))
+            )
+        }
+        Text(
+            text = point.dateLabel,
+            color = ProgressSecondaryText,
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

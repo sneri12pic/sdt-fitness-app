@@ -12,6 +12,16 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
+data class DailyStepsSample(
+    val date: LocalDate,
+    val steps: Long
+)
+
+data class WeightSample(
+    val time: Instant,
+    val weightKg: Double
+)
+
 class HealthConnectManager(
     context: Context
 ) {
@@ -56,6 +66,36 @@ class HealthConnectManager(
         return result[StepsRecord.COUNT_TOTAL] ?: 0L
     }
 
+    suspend fun readDailyStepsHistory(days: Int): List<DailyStepsSample> {
+        if (!isAvailable()) return emptyList()
+
+        val safeDays = days.coerceIn(1, 31)
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        val firstDate = today.minusDays((safeDays - 1).toLong())
+        val now = Instant.now()
+
+        return (0 until safeDays).map { offset ->
+            val date = firstDate.plusDays(offset.toLong())
+            val start = date.atStartOfDay(zone).toInstant()
+            val end = if (date == today) {
+                now
+            } else {
+                date.plusDays(1).atStartOfDay(zone).toInstant()
+            }
+            val result = healthConnectClient().aggregate(
+                AggregateRequest(
+                    metrics = setOf(StepsRecord.COUNT_TOTAL),
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+            )
+            DailyStepsSample(
+                date = date,
+                steps = result[StepsRecord.COUNT_TOTAL] ?: 0L
+            )
+        }
+    }
+
     suspend fun readLatestWeightKg(): Double? {
         if (!isAvailable()) return null
 
@@ -69,6 +109,30 @@ class HealthConnectManager(
         )
 
         return response.records.firstOrNull()?.weight?.inKilograms
+    }
+
+    suspend fun readWeightHistory(days: Int, limit: Int = 20): List<WeightSample> {
+        if (!isAvailable()) return emptyList()
+
+        val safeDays = days.coerceIn(1, 365)
+        val safeLimit = limit.coerceIn(1, 100)
+        val now = Instant.now()
+        val start = now.minusSeconds(safeDays.toLong() * 24L * 60L * 60L)
+        val response = healthConnectClient().readRecords(
+            ReadRecordsRequest(
+                recordType = WeightRecord::class,
+                timeRangeFilter = TimeRangeFilter.between(start, now),
+                ascendingOrder = false,
+                pageSize = safeLimit
+            )
+        )
+
+        return response.records.asReversed().map { record ->
+            WeightSample(
+                time = record.time,
+                weightKg = record.weight.inKilograms
+            )
+        }
     }
 
     private fun healthConnectClient(): HealthConnectClient {

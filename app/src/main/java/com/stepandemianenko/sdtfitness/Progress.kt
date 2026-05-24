@@ -33,11 +33,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +63,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.lifecycleScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.home.DailyStepsSourceType
+import com.stepandemianenko.sdtfitness.progress.DailyStepsBarChart
+import com.stepandemianenko.sdtfitness.progress.DailyStepsBarChartPoint
+import com.stepandemianenko.sdtfitness.progress.ExerciseSetMetricChart
+import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -122,6 +131,11 @@ private const val HealthConnectProviderPackageName = "com.google.android.apps.he
 private val ProgressHorizontalPadding = 20.dp
 private val ProgressTopPadding = 30.dp
 private val ProgressBottomInsetCorner = 16.dp
+
+private enum class HealthMetricDialog {
+    STEPS,
+    WEIGHT
+}
 
 @Composable
 fun ProgressRoute(
@@ -241,6 +255,8 @@ private fun ProgressContent(
     onCompletedSessionsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var activeHealthMetricDialog by remember { mutableStateOf<HealthMetricDialog?>(null) }
+
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -329,7 +345,8 @@ private fun ProgressContent(
                     title = "Steps",
                     value = "%,d".format(uiState.displayedTodaySteps),
                     subtitle = "Today",
-                    badge = formatStepsSourceLabel(uiState.displayedStepsSourceType)
+                    badge = formatStepsSourceLabel(uiState.displayedStepsSourceType),
+                    onClick = { activeHealthMetricDialog = HealthMetricDialog.STEPS }
                 )
                 OutcomeCard(
                     modifier = Modifier.weight(1f),
@@ -337,7 +354,8 @@ private fun ProgressContent(
                     title = "Weight",
                     value = formatWeightKg(uiState.importedLatestWeightKg),
                     subtitle = "Latest",
-                    badge = "Imported"
+                    badge = "Imported",
+                    onClick = { activeHealthMetricDialog = HealthMetricDialog.WEIGHT }
                 )
             }
         } else {
@@ -346,7 +364,8 @@ private fun ProgressContent(
                 title = "Steps",
                 value = "%,d".format(uiState.displayedTodaySteps),
                 subtitle = "Today",
-                badge = formatStepsSourceLabel(uiState.displayedStepsSourceType)
+                badge = formatStepsSourceLabel(uiState.displayedStepsSourceType),
+                onClick = { activeHealthMetricDialog = HealthMetricDialog.STEPS }
             )
         }
 
@@ -360,6 +379,17 @@ private fun ProgressContent(
                 ),
                 AchievementItem(R.drawable.trend, "Top volume: ${uiState.topExerciseText}")
             )
+        )
+    }
+
+    val dialog = activeHealthMetricDialog
+    if (dialog != null) {
+        HealthMetricStatsDialog(
+            dialog = dialog,
+            stepsPoints = uiState.dailyStepsChartPoints.takeIf { it.isNotEmpty() }
+                ?: listOf(DailyStepsBarChartPoint(dateLabel = "Today", steps = uiState.displayedTodaySteps)),
+            weightChart = uiState.weightChart,
+            onDismiss = { activeHealthMetricDialog = null }
         )
     }
 }
@@ -599,10 +629,17 @@ private fun OutcomeCard(
     title: String,
     value: String,
     subtitle: String,
-    badge: String
+    badge: String,
+    onClick: (() -> Unit)? = null
 ) {
+    val clickableModifier = if (onClick != null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier
+    }
+
     ProgressCard(
-        modifier = modifier,
+        modifier = modifier.then(clickableModifier),
         minHeight = 118.dp
     ) {
         Row(
@@ -648,6 +685,41 @@ private fun OutcomeCard(
             }
         }
     }
+}
+
+@Composable
+private fun HealthMetricStatsDialog(
+    dialog: HealthMetricDialog,
+    stepsPoints: List<DailyStepsBarChartPoint>,
+    weightChart: SetMetricChartUiModel,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ProgressCardBackground,
+        title = {
+            Text(
+                text = if (dialog == HealthMetricDialog.STEPS) "Steps" else "Weight",
+                color = ProgressPrimaryText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            when (dialog) {
+                HealthMetricDialog.STEPS -> DailyStepsBarChart(points = stepsPoints)
+                HealthMetricDialog.WEIGHT -> ExerciseSetMetricChart(chart = weightChart)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Close",
+                    color = ProgressPrimaryText,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    )
 }
 
 private data class AchievementItem(

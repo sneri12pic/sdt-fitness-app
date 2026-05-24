@@ -198,20 +198,8 @@ class HomeViewModel(
                 .coerceAtLeast(0L)
                 .coerceAtMost(Int.MAX_VALUE.toLong())
                 .toInt()
-            val dailyQuest = _uiState.value.dashboard.dailyQuest
-
-            if (dailyQuest.sourceType == DailyStepsSourceType.HEALTH_CONNECT) {
-                repository.updateStepsFromHealthConnect(currentSteps = normalizedImportedSteps)
-                return@launch
-            }
-
-            if (dailyQuest.currentSteps <= 0 || normalizedImportedSteps <= 0) {
-                return@launch
-            }
-
-            _uiState.update {
-                it.copy(pendingHealthConnectStepsToAdd = normalizedImportedSteps)
-            }
+            repository.updateStepsFromHealthConnect(currentSteps = normalizedImportedSteps)
+            _uiState.update { it.copy(pendingHealthConnectStepsToAdd = null) }
         }
     }
 

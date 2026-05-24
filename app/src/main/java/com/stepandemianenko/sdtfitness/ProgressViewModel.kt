@@ -5,14 +5,21 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
+import com.stepandemianenko.sdtfitness.data.health.DailyStepsSample
+import com.stepandemianenko.sdtfitness.data.health.WeightSample
 import com.stepandemianenko.sdtfitness.data.repository.ProgressSummary
 import com.stepandemianenko.sdtfitness.home.DailyStepsSourceType
+import com.stepandemianenko.sdtfitness.progress.DailyStepsBarChartPoint
+import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 data class ProgressUiState(
@@ -40,6 +47,8 @@ data class ProgressUiState(
     val displayedStepsSourceType: DailyStepsSourceType = DailyStepsSourceType.MANUAL,
     val importedTodaySteps: Long? = null,
     val importedLatestWeightKg: Double? = null,
+    val dailyStepsChartPoints: List<DailyStepsBarChartPoint> = emptyList(),
+    val weightChart: SetMetricChartUiModel = emptyWeightChart(),
     val healthConnectError: String? = null
 )
 
@@ -71,6 +80,8 @@ class ProgressViewModel(
                         displayedStepsSourceType = DailyStepsSourceType.MANUAL,
                         importedTodaySteps = null,
                         importedLatestWeightKg = null,
+                        dailyStepsChartPoints = emptyList(),
+                        weightChart = emptyWeightChart(),
                         healthConnectError = null
                     )
                 }
@@ -91,6 +102,8 @@ class ProgressViewModel(
                     displayedStepsSourceType = current.displayedStepsSourceType,
                     importedTodaySteps = current.importedTodaySteps,
                     importedLatestWeightKg = current.importedLatestWeightKg,
+                    dailyStepsChartPoints = current.dailyStepsChartPoints,
+                    weightChart = current.weightChart,
                     healthConnectError = current.healthConnectError
                 )
             }
@@ -115,6 +128,8 @@ class ProgressViewModel(
                                 isHealthConnectLoading = false,
                                 importedTodaySteps = null,
                                 importedLatestWeightKg = null,
+                                dailyStepsChartPoints = emptyList(),
+                                weightChart = emptyWeightChart(),
                                 healthConnectError = error.message ?: "Failed to check Health Connect permissions."
                             )
                         }
@@ -134,9 +149,13 @@ class ProgressViewModel(
                             it.copy(
                                 isHealthConnectLoading = false,
                                 importedTodaySteps = null,
-                                importedLatestWeightKg = null
+                                importedLatestWeightKg = null,
+                                dailyStepsChartPoints = emptyList(),
+                                weightChart = emptyWeightChart()
                             )
                         }
+                    } else {
+                        loadHealthConnectData()
                     }
                 }
 
@@ -148,6 +167,8 @@ class ProgressViewModel(
                             isHealthConnectLoading = false,
                             importedTodaySteps = null,
                             importedLatestWeightKg = null,
+                            dailyStepsChartPoints = emptyList(),
+                            weightChart = emptyWeightChart(),
                             healthConnectError = "Health Connect needs an update on this device."
                         )
                     }
@@ -161,6 +182,8 @@ class ProgressViewModel(
                             isHealthConnectLoading = false,
                             importedTodaySteps = null,
                             importedLatestWeightKg = null,
+                            dailyStepsChartPoints = emptyList(),
+                            weightChart = emptyWeightChart(),
                             healthConnectError = null
                         )
                     }
@@ -177,6 +200,8 @@ class ProgressViewModel(
                 isHealthConnectLoading = false,
                 importedTodaySteps = if (hasAllPermissions) it.importedTodaySteps else null,
                 importedLatestWeightKg = if (hasAllPermissions) it.importedLatestWeightKg else null,
+                dailyStepsChartPoints = if (hasAllPermissions) it.dailyStepsChartPoints else emptyList(),
+                weightChart = if (hasAllPermissions) it.weightChart else emptyWeightChart(),
                 healthConnectError = null
             )
         }
@@ -213,26 +238,30 @@ class ProgressViewModel(
         runCatching {
             val steps = healthConnectManager.readTodaySteps()
             val latestWeight = healthConnectManager.readLatestWeightKg()
-            Pair(steps, latestWeight)
-        }.onSuccess { (steps, latestWeight) ->
-            homeRepository.recordHealthConnectImport(
-                importedSteps = steps,
-                latestWeightKg = latestWeight
+            val dailyStepsHistory = healthConnectManager.readDailyStepsHistory(days = 7)
+            val weightHistory = healthConnectManager.readWeightHistory(days = 90)
+            HealthConnectImport(
+                todaySteps = steps,
+                latestWeightKg = latestWeight,
+                dailyStepsHistory = dailyStepsHistory,
+                weightHistory = weightHistory
             )
-            val currentQuest = homeRepository.dashboardState.value.dailyQuest
-            val shouldApplyImportedSteps = currentQuest.sourceType == DailyStepsSourceType.HEALTH_CONNECT
-
-            if (shouldApplyImportedSteps) {
-                homeRepository.updateStepsFromHealthConnect(
-                    currentSteps = steps.toInt().coerceAtLeast(0)
-                )
-            }
+        }.onSuccess { import ->
+            homeRepository.recordHealthConnectImport(
+                importedSteps = import.todaySteps,
+                latestWeightKg = import.latestWeightKg
+            )
+            homeRepository.updateStepsFromHealthConnect(
+                currentSteps = import.todaySteps.toInt().coerceAtLeast(0)
+            )
 
             _uiState.update {
                 it.copy(
                     isHealthConnectLoading = false,
-                    importedTodaySteps = steps,
-                    importedLatestWeightKg = latestWeight,
+                    importedTodaySteps = import.todaySteps,
+                    importedLatestWeightKg = import.latestWeightKg,
+                    dailyStepsChartPoints = import.dailyStepsHistory.toBarChartPoints(),
+                    weightChart = import.weightHistory.toWeightChart(),
                     healthConnectError = null
                 )
             }
@@ -242,6 +271,8 @@ class ProgressViewModel(
                     isHealthConnectLoading = false,
                     importedTodaySteps = null,
                     importedLatestWeightKg = null,
+                    dailyStepsChartPoints = emptyList(),
+                    weightChart = emptyWeightChart(),
                     healthConnectError = error.message ?: "Failed to import from Health Connect."
                 )
             }
@@ -309,4 +340,47 @@ class ProgressViewModel(
     private fun formatWhole(value: Double): String {
         return "%,d".format(value.roundToInt())
     }
+
+    private data class HealthConnectImport(
+        val todaySteps: Long,
+        val latestWeightKg: Double?,
+        val dailyStepsHistory: List<DailyStepsSample>,
+        val weightHistory: List<WeightSample>
+    )
+
+    private fun List<DailyStepsSample>.toBarChartPoints(): List<DailyStepsBarChartPoint> {
+        return map { sample ->
+            DailyStepsBarChartPoint(
+                dateLabel = sample.date.format(dayFormatter),
+                steps = sample.steps
+                    .coerceAtLeast(0L)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+            )
+        }
+    }
+
+    private fun List<WeightSample>.toWeightChart(): SetMetricChartUiModel {
+        return SetMetricChartUiModel(
+            title = "Weight Progress",
+            actualLabel = "Weight",
+            actualValues = map { it.weightKg.toFloat().coerceAtLeast(0f) },
+            targetValues = List(size) { null },
+            unitLabel = "kg"
+        )
+    }
+
+    companion object {
+        private val dayFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d", Locale.ENGLISH)
+    }
+}
+
+private fun emptyWeightChart(): SetMetricChartUiModel {
+    return SetMetricChartUiModel(
+        title = "Weight Progress",
+        actualLabel = "Weight",
+        actualValues = emptyList(),
+        targetValues = emptyList(),
+        unitLabel = "kg"
+    )
 }
