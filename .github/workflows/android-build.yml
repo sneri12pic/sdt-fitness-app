@@ -1,11 +1,11 @@
-name: Android Build
+name: Android CI
 
 on:
   push:
   pull_request:
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,8 +22,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
       - name: Compile Debug Kotlin
-        run: ./gradlew :app:compileDebugKotlin
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Run Unit Tests
+        run: ./gradlew :app:testDebugUnitTest :auth-api:test --no-daemon --stacktrace
 
       - name: Assemble Debug
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
