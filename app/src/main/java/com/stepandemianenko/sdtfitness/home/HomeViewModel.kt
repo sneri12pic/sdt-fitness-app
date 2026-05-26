@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
+import com.stepandemianenko.sdtfitness.data.health.WeightSample
+import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +16,12 @@ import kotlinx.coroutines.launch
 sealed interface HomeUiEvent {
     data object OpenDailyQuestEditor : HomeUiEvent
     data object DismissDailyQuestEditor : HomeUiEvent
+    data object OpenAddCustomQuestDialog : HomeUiEvent
+    data object DismissAddCustomQuestDialog : HomeUiEvent
+    data object AddWeightInQuest : HomeUiEvent
+    data object ToggleWeightInQuestCompletion : HomeUiEvent
+    data object OpenWeightInChartDialog : HomeUiEvent
+    data object DismissWeightInChartDialog : HomeUiEvent
     data class DailyQuestTargetInputChanged(val value: String) : HomeUiEvent
     data class DailyQuestCurrentInputChanged(val value: String) : HomeUiEvent
     data object SaveDailyQuestEditor : HomeUiEvent
@@ -80,6 +88,30 @@ class HomeViewModel(
             HomeUiEvent.OpenDailyQuestEditor -> openDailyQuestEditor()
             HomeUiEvent.DismissDailyQuestEditor -> {
                 _uiState.update { it.copy(isDailyQuestEditorOpen = false) }
+            }
+
+            HomeUiEvent.OpenAddCustomQuestDialog -> {
+                _uiState.update { it.copy(isAddCustomQuestDialogOpen = true) }
+            }
+
+            HomeUiEvent.DismissAddCustomQuestDialog -> {
+                _uiState.update { it.copy(isAddCustomQuestDialogOpen = false) }
+            }
+
+            HomeUiEvent.AddWeightInQuest -> {
+                repository.addTodayWeightInQuest()
+                _uiState.update { it.copy(isAddCustomQuestDialogOpen = false) }
+            }
+
+            HomeUiEvent.ToggleWeightInQuestCompletion -> {
+                val currentCompleted = _uiState.value.dashboard.weightInQuest.isCompleted
+                repository.setTodayWeightInCompleted(completed = !currentCompleted)
+            }
+
+            HomeUiEvent.OpenWeightInChartDialog -> openWeightInChartDialog()
+
+            HomeUiEvent.DismissWeightInChartDialog -> {
+                _uiState.update { it.copy(isWeightInChartDialogOpen = false) }
             }
 
             is HomeUiEvent.DailyQuestTargetInputChanged -> {
@@ -173,6 +205,25 @@ class HomeViewModel(
         repository.logTodayRecovery(option)
     }
 
+    private fun openWeightInChartDialog() {
+        _uiState.update { it.copy(isWeightInChartDialogOpen = true) }
+        viewModelScope.launch {
+            val canReadHealthConnect = runCatching {
+                healthConnectManager.isAvailable() && healthConnectManager.hasAllPermissions()
+            }.getOrDefault(false)
+
+            val chart = if (canReadHealthConnect) {
+                runCatching {
+                    healthConnectManager.readWeightHistory(days = 90).toWeightChart()
+                }.getOrDefault(emptyWeightChart())
+            } else {
+                emptyWeightChart()
+            }
+
+            _uiState.update { it.copy(weightInChart = chart) }
+        }
+    }
+
     fun syncHealthConnectSteps() {
         viewModelScope.launch {
             val canReadHealthConnect = runCatching {
@@ -189,9 +240,15 @@ class HomeViewModel(
                 healthConnectManager.readLatestWeightKg()
             }.getOrNull()
 
+            val todayWeightSample = runCatching {
+                healthConnectManager.readTodayWeightSample()
+            }.getOrNull()
+
             repository.recordHealthConnectImport(
                 importedSteps = importedSteps,
-                latestWeightKg = latestWeightKg
+                latestWeightKg = latestWeightKg,
+                todayWeightKg = todayWeightSample?.weightKg,
+                todayWeightRecordedAt = todayWeightSample?.time
             )
 
             val normalizedImportedSteps = importedSteps
@@ -219,5 +276,25 @@ class HomeViewModel(
 
     private fun sanitizeNumericInput(input: String): String {
         return input.filter { it.isDigit() }
+    }
+
+    private fun List<WeightSample>.toWeightChart(): SetMetricChartUiModel {
+        return SetMetricChartUiModel(
+            title = "Weight Progress",
+            actualLabel = "Weight",
+            actualValues = map { it.weightKg.toFloat().coerceAtLeast(0f) },
+            targetValues = List(size) { null },
+            unitLabel = "kg"
+        )
+    }
+
+    private fun emptyWeightChart(): SetMetricChartUiModel {
+        return SetMetricChartUiModel(
+            title = "Weight Progress",
+            actualLabel = "Weight",
+            actualValues = emptyList(),
+            targetValues = emptyList(),
+            unitLabel = "kg"
+        )
     }
 }

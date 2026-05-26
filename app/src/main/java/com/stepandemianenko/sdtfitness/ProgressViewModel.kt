@@ -238,18 +238,23 @@ class ProgressViewModel(
         runCatching {
             val steps = healthConnectManager.readTodaySteps()
             val latestWeight = healthConnectManager.readLatestWeightKg()
+            val todayWeight = healthConnectManager.readTodayWeightSample()
             val dailyStepsHistory = healthConnectManager.readDailyStepsHistory(days = 7)
             val weightHistory = healthConnectManager.readWeightHistory(days = 90)
             HealthConnectImport(
                 todaySteps = steps,
                 latestWeightKg = latestWeight,
+                todayWeightKg = todayWeight?.weightKg,
+                todayWeightRecordedAt = todayWeight?.time,
                 dailyStepsHistory = dailyStepsHistory,
                 weightHistory = weightHistory
             )
         }.onSuccess { import ->
             homeRepository.recordHealthConnectImport(
                 importedSteps = import.todaySteps,
-                latestWeightKg = import.latestWeightKg
+                latestWeightKg = import.latestWeightKg,
+                todayWeightKg = import.todayWeightKg,
+                todayWeightRecordedAt = import.todayWeightRecordedAt
             )
             homeRepository.updateStepsFromHealthConnect(
                 currentSteps = import.todaySteps.toInt().coerceAtLeast(0)
@@ -344,6 +349,8 @@ class ProgressViewModel(
     private data class HealthConnectImport(
         val todaySteps: Long,
         val latestWeightKg: Double?,
+        val todayWeightKg: Double?,
+        val todayWeightRecordedAt: java.time.Instant?,
         val dailyStepsHistory: List<DailyStepsSample>,
         val weightHistory: List<WeightSample>
     )

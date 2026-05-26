@@ -76,11 +76,15 @@ import androidx.lifecycle.lifecycleScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.home.DailyGoalSummaryState
 import com.stepandemianenko.sdtfitness.home.DailyQuestState
+import com.stepandemianenko.sdtfitness.home.DailyQuestCompletionSource
 import com.stepandemianenko.sdtfitness.home.DebugAccountUiModel
 import com.stepandemianenko.sdtfitness.home.HomeUiEvent
 import com.stepandemianenko.sdtfitness.home.HomeUiState
 import com.stepandemianenko.sdtfitness.home.HomeViewModel
 import com.stepandemianenko.sdtfitness.home.RecoveryOption
+import com.stepandemianenko.sdtfitness.home.WeightInQuestState
+import com.stepandemianenko.sdtfitness.progress.ExerciseSetMetricChart
+import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import com.stepandemianenko.sdtfitness.quicklog.QuickLogRoute
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -181,6 +185,12 @@ fun HomeRoute(
         onDailyQuestTargetInputChanged = { viewModel.onEvent(HomeUiEvent.DailyQuestTargetInputChanged(it)) },
         onDailyQuestCurrentInputChanged = { viewModel.onEvent(HomeUiEvent.DailyQuestCurrentInputChanged(it)) },
         onSaveDailyQuestEditor = { viewModel.onEvent(HomeUiEvent.SaveDailyQuestEditor) },
+        onOpenAddCustomQuestDialog = { viewModel.onEvent(HomeUiEvent.OpenAddCustomQuestDialog) },
+        onDismissAddCustomQuestDialog = { viewModel.onEvent(HomeUiEvent.DismissAddCustomQuestDialog) },
+        onAddWeightInQuest = { viewModel.onEvent(HomeUiEvent.AddWeightInQuest) },
+        onToggleWeightInQuestCompletion = { viewModel.onEvent(HomeUiEvent.ToggleWeightInQuestCompletion) },
+        onOpenWeightInChartDialog = { viewModel.onEvent(HomeUiEvent.OpenWeightInChartDialog) },
+        onDismissWeightInChartDialog = { viewModel.onEvent(HomeUiEvent.DismissWeightInChartDialog) },
         onSaveRecoveryOption = { viewModel.onEvent(HomeUiEvent.SaveRecoveryOption(it)) },
         onPreviousRoutineMonth = { viewModel.onEvent(HomeUiEvent.PreviousRoutineMonth) },
         onNextRoutineMonth = { viewModel.onEvent(HomeUiEvent.NextRoutineMonth) },
@@ -205,6 +215,12 @@ fun HomeOneScreen(
     onDailyQuestTargetInputChanged: (String) -> Unit = {},
     onDailyQuestCurrentInputChanged: (String) -> Unit = {},
     onSaveDailyQuestEditor: () -> Unit = {},
+    onOpenAddCustomQuestDialog: () -> Unit = {},
+    onDismissAddCustomQuestDialog: () -> Unit = {},
+    onAddWeightInQuest: () -> Unit = {},
+    onToggleWeightInQuestCompletion: () -> Unit = {},
+    onOpenWeightInChartDialog: () -> Unit = {},
+    onDismissWeightInChartDialog: () -> Unit = {},
     onSaveRecoveryOption: (RecoveryOption) -> Unit = {},
     onPreviousRoutineMonth: () -> Unit = {},
     onNextRoutineMonth: () -> Unit = {},
@@ -265,6 +281,9 @@ fun HomeOneScreen(
                                 onOpenQuickLogDetails = { activeScreen = HomeScreen.QuickLogDetails },
                                 onOpenRestDayDetails = { activeScreen = HomeScreen.RestDayDetails },
                                 onOpenDailyQuestEditor = onOpenDailyQuestEditor,
+                                onOpenAddCustomQuestDialog = onOpenAddCustomQuestDialog,
+                                onToggleWeightInQuestCompletion = onToggleWeightInQuestCompletion,
+                                onOpenWeightInChartDialog = onOpenWeightInChartDialog,
                                 onPreviousRoutineMonth = onPreviousRoutineMonth,
                                 onNextRoutineMonth = onNextRoutineMonth,
                                 healthConnectLastUpdatedMillis = uiState.dashboard.healthConnectLastSyncedAtMillis,
@@ -343,6 +362,21 @@ fun HomeOneScreen(
                 )
             }
 
+            if (uiState.isAddCustomQuestDialogOpen) {
+                AddCustomQuestDialog(
+                    isWeightInAdded = uiState.dashboard.weightInQuest.isAdded,
+                    onAddWeightInQuest = onAddWeightInQuest,
+                    onDismiss = onDismissAddCustomQuestDialog
+                )
+            }
+
+            if (uiState.isWeightInChartDialogOpen) {
+                WeightInChartDialog(
+                    chart = uiState.weightInChart,
+                    onDismiss = onDismissWeightInChartDialog
+                )
+            }
+
             val pendingImportedSteps = uiState.pendingHealthConnectStepsToAdd
             if (pendingImportedSteps != null) {
                 AlertDialog(
@@ -384,6 +418,9 @@ private fun DashboardContent(
     onOpenQuickLogDetails: () -> Unit,
     onOpenRestDayDetails: () -> Unit,
     onOpenDailyQuestEditor: () -> Unit,
+    onOpenAddCustomQuestDialog: () -> Unit,
+    onToggleWeightInQuestCompletion: () -> Unit,
+    onOpenWeightInChartDialog: () -> Unit,
     onPreviousRoutineMonth: () -> Unit,
     onNextRoutineMonth: () -> Unit,
     healthConnectLastUpdatedMillis: Long?,
@@ -431,7 +468,14 @@ private fun DashboardContent(
         questState = uiState.dashboard.dailyQuest,
         onEditClick = onOpenDailyQuestEditor
     )
-    AddTile(onClick = onWorkoutClick)
+    if (uiState.dashboard.weightInQuest.isAdded) {
+        WeightInQuestCard(
+            questState = uiState.dashboard.weightInQuest,
+            onClick = onOpenWeightInChartDialog,
+            onToggleDoneClick = onToggleWeightInQuestCompletion
+        )
+    }
+    AddTile(onClick = onOpenAddCustomQuestDialog)
     SectionHeader(title = "Routine")
     RoutineCard(
         visibleMonth = uiState.visibleRoutineMonth,
@@ -1117,6 +1161,10 @@ private fun formatCount(value: Int): String {
     return "%,d".format(value.coerceAtLeast(0))
 }
 
+private fun formatWeightInValue(weightKg: Double?): String {
+    return weightKg?.let { String.format(Locale.US, "%.1f kg", it) } ?: "Weight logged"
+}
+
 @Composable
 private fun DailyQuestEditorDialog(
     targetStepsValue: String,
@@ -1164,6 +1212,225 @@ private fun DailyQuestEditorDialog(
             }
         }
     )
+}
+
+@Composable
+private fun AddCustomQuestDialog(
+    isWeightInAdded: Boolean,
+    onAddWeightInQuest: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBackground,
+        title = {
+            Text(
+                text = "Add Custom Quest",
+                color = PrimaryText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                DialogSectionLabel(text = "Suggested Quests")
+                SuggestedQuestRow(
+                    isAdded = isWeightInAdded,
+                    onAddClick = onAddWeightInQuest
+                )
+                DialogSectionLabel(text = "Custom Quests")
+                Text(
+                    text = "Custom quests coming soon.",
+                    color = SecondaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Close",
+                    color = PrimaryText,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun WeightInChartDialog(
+    chart: SetMetricChartUiModel,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBackground,
+        title = {
+            Text(
+                text = "Weight",
+                color = PrimaryText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            ExerciseSetMetricChart(chart = chart)
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Close",
+                    color = PrimaryText,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun DialogSectionLabel(text: String) {
+    Text(
+        text = text,
+        color = PrimaryText,
+        fontSize = 15.sp,
+        lineHeight = 16.sp,
+        fontWeight = FontWeight.SemiBold
+    )
+}
+
+@Composable
+private fun SuggestedQuestRow(
+    isAdded: Boolean,
+    onAddClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFFFEFE5))
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CircleIconContainer(iconRes = R.drawable.orange_scales)
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Weight-In",
+                color = PrimaryText,
+                fontSize = 17.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "Weigh yourself today",
+                color = SecondaryText,
+                fontSize = 13.sp,
+                lineHeight = 15.sp
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        if (isAdded) {
+            QuestStatusPill(
+                text = "Added",
+                backgroundColor = SoftGreen,
+                textColor = PrimaryText,
+                onClick = null
+            )
+        } else {
+            Button(
+                onClick = onAddClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ActionColor,
+                    contentColor = Color(0xFFFCE8DA)
+                ),
+                shape = RoundedCornerShape(50)
+            ) {
+                Text(
+                    text = "Add",
+                    fontSize = 13.sp,
+                    lineHeight = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeightInQuestCard(
+    questState: WeightInQuestState,
+    onClick: () -> Unit,
+    onToggleDoneClick: () -> Unit
+) {
+    HomeCard(
+        modifier = Modifier.clickable(onClick = onClick),
+        horizontalPadding = 10.dp,
+        verticalPadding = 10.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircleIconContainer(iconRes = R.drawable.orange_scales)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Weight-In",
+                    color = PrimaryText,
+                    fontSize = 18.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = when {
+                        questState.isCompleted && questState.completionSource == DailyQuestCompletionSource.HEALTH_CONNECT ->
+                            "Synced from Health Connect: ${formatWeightInValue(questState.weightKg)}"
+                        questState.isCompleted -> "Completed today"
+                        else -> "Weigh yourself today"
+                    },
+                    color = SecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            QuestStatusPill(
+                text = if (questState.isCompleted) "✓" else "Done",
+                backgroundColor = if (questState.isCompleted) SoftGreen else ActionColor,
+                textColor = if (questState.isCompleted) PrimaryText else Color(0xFFFCE8DA),
+                onClick = onToggleDoneClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuestStatusPill(
+    text: String,
+    backgroundColor: Color,
+    textColor: Color,
+    onClick: (() -> Unit)?
+) {
+    val modifier = Modifier
+        .clip(RoundedCornerShape(50))
+        .background(backgroundColor)
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+        .padding(horizontal = 12.dp, vertical = 6.dp)
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 12.sp,
+            lineHeight = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
 }
 
 @Composable

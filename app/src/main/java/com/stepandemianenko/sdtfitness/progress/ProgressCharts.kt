@@ -292,7 +292,9 @@ fun ExerciseSetMetricChart(
         )
     }
 
-    var selectedPointIndex by remember { mutableIntStateOf(if (chart.actualValues.isNotEmpty()) 0 else -1) }
+    var selectedPointIndex by remember {
+        mutableIntStateOf(if (chart.actualValues.isNotEmpty()) chart.actualValues.lastIndex else -1)
+    }
     var graphSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
     val leftPaddingPx = with(density) { 8.dp.toPx() }
@@ -327,7 +329,7 @@ fun ExerciseSetMetricChart(
     }
 
     LaunchedEffect(chart.actualValues) {
-        selectedPointIndex = if (chart.actualValues.isNotEmpty()) 0 else -1
+        selectedPointIndex = if (chart.actualValues.isNotEmpty()) chart.actualValues.lastIndex else -1
     }
 
     Column(

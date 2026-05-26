@@ -2,10 +2,14 @@ package com.stepandemianenko.sdtfitness.home
 
 import androidx.room.withTransaction
 import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.local.DailyQuestId
+import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordDao
+import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordEntity
 import com.stepandemianenko.sdtfitness.data.local.SyncState
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsDao
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsEntity
 import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
+import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +25,7 @@ class HomeRepository(
     private val accountSessionManager: AccountSessionManager
 ) {
     private val userSettingsDao: UserSettingsDao = database.userSettingsDao()
+    private val dailyQuestRecordDao: DailyQuestRecordDao = database.dailyQuestRecordDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _dashboardState = MutableStateFlow(HomeDashboardState())
@@ -68,17 +73,82 @@ class HomeRepository(
 
     fun recordHealthConnectImport(
         importedSteps: Long,
-        latestWeightKg: Double?
+        latestWeightKg: Double?,
+        todayWeightKg: Double? = null,
+        todayWeightRecordedAt: Instant? = null
     ) {
-        mutateSettings { current, now ->
-            current.copy(
-                healthConnectLastSyncedAt = now,
-                healthConnectLastImportedSteps = importedSteps
-                    .coerceAtLeast(0L)
-                    .coerceAtMost(Int.MAX_VALUE.toLong())
-                    .toInt(),
-                healthConnectLatestWeightKg = latestWeightKg
-            )
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            val now = System.currentTimeMillis()
+            val todayKey = LocalDate.now().toString()
+            database.withTransaction {
+                val current = userSettingsDao.getByAccountId(accountId)
+                    ?: defaultSettings(accountId = accountId, now = now)
+                userSettingsDao.upsert(
+                    current.copy(
+                        accountId = accountId,
+                        healthConnectLastSyncedAt = now,
+                        healthConnectLastImportedSteps = importedSteps
+                            .coerceAtLeast(0L)
+                            .coerceAtMost(Int.MAX_VALUE.toLong())
+                            .toInt(),
+                        healthConnectLatestWeightKg = latestWeightKg,
+                        updatedAt = now
+                    )
+                )
+                if (todayWeightKg != null) {
+                    upsertWeightInRecord(
+                        accountId = accountId,
+                        date = todayKey,
+                        now = now,
+                        completed = true,
+                        completionSource = DailyQuestCompletionSource.HEALTH_CONNECT.name,
+                        weightKg = todayWeightKg,
+                        completedAt = todayWeightRecordedAt?.toEpochMilli() ?: now
+                    )
+                }
+            }
+            publishUpdatedState(accountId = accountId)
+        }
+    }
+
+    fun addTodayWeightInQuest() {
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            val now = System.currentTimeMillis()
+            val todayKey = LocalDate.now().toString()
+            database.withTransaction {
+                upsertWeightInRecord(
+                    accountId = accountId,
+                    date = todayKey,
+                    now = now,
+                    completed = false,
+                    completionSource = null,
+                    weightKg = null,
+                    completedAt = null
+                )
+            }
+            publishUpdatedState(accountId = accountId)
+        }
+    }
+
+    fun setTodayWeightInCompleted(completed: Boolean) {
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            val now = System.currentTimeMillis()
+            val todayKey = LocalDate.now().toString()
+            database.withTransaction {
+                upsertWeightInRecord(
+                    accountId = accountId,
+                    date = todayKey,
+                    now = now,
+                    completed = completed,
+                    completionSource = if (completed) DailyQuestCompletionSource.MANUAL.name else null,
+                    weightKg = null,
+                    completedAt = null
+                )
+            }
+            publishUpdatedState(accountId = accountId)
         }
     }
 
@@ -188,7 +258,9 @@ class HomeRepository(
             ?: defaultSettings(accountId = accountId, now = System.currentTimeMillis()).also {
                 userSettingsDao.upsert(it)
             }
-        _dashboardState.value = settings.toDashboardState()
+        val todayKey = LocalDate.now().toString()
+        val questRecords = dailyQuestRecordDao.getForDate(accountId = accountId, date = todayKey)
+        _dashboardState.value = settings.toDashboardState(questRecords = questRecords)
     }
 
     private fun defaultSettings(accountId: String, now: Long): UserSettingsEntity {
@@ -200,7 +272,40 @@ class HomeRepository(
         )
     }
 
-    private fun UserSettingsEntity.toDashboardState(): HomeDashboardState {
+    private suspend fun upsertWeightInRecord(
+        accountId: String,
+        date: String,
+        now: Long,
+        completed: Boolean,
+        completionSource: String?,
+        weightKg: Double?,
+        completedAt: Long?
+    ) {
+        val current = dailyQuestRecordDao.getByQuestAndDate(
+            accountId = accountId,
+            questId = DailyQuestId.WEIGHT_IN,
+            date = date
+        )
+        val record = DailyQuestRecordEntity(
+            accountId = accountId,
+            questId = DailyQuestId.WEIGHT_IN,
+            date = date,
+            isAdded = true,
+            isCompleted = completed,
+            completionSource = completionSource,
+            completedAt = if (completed) completedAt ?: now else null,
+            valueKg = weightKg ?: current?.valueKg,
+            createdAt = current?.createdAt ?: now,
+            updatedAt = now,
+            deletedAt = null,
+            syncState = SyncState.LOCAL_ONLY
+        )
+        dailyQuestRecordDao.upsert(record)
+    }
+
+    private fun UserSettingsEntity.toDashboardState(
+        questRecords: List<DailyQuestRecordEntity>
+    ): HomeDashboardState {
         val sourceType = runCatching {
             DailyStepsSourceType.valueOf(dailyStepsSource)
         }.getOrDefault(DailyStepsSourceType.MANUAL)
@@ -247,6 +352,11 @@ class HomeRepository(
             null
         }
 
+        val weightInRecord = questRecords.firstOrNull { it.questId == DailyQuestId.WEIGHT_IN }
+        val weightInSource = weightInRecord?.completionSource?.let { sourceName ->
+            runCatching { DailyQuestCompletionSource.valueOf(sourceName) }.getOrNull()
+        }
+
         return HomeDashboardState(
             dailyQuest = DailyQuestState(
                 sourceType = sourceType,
@@ -254,6 +364,13 @@ class HomeRepository(
                 currentSteps = currentSteps,
                 isManual = sourceType == DailyStepsSourceType.MANUAL,
                 lastUpdatedMillis = dailyStepsLastUpdated
+            ),
+            weightInQuest = WeightInQuestState(
+                isAdded = weightInRecord?.isAdded == true,
+                isCompleted = weightInRecord?.isCompleted == true,
+                completionSource = weightInSource,
+                completedAtMillis = weightInRecord?.completedAt,
+                weightKg = weightInRecord?.valueKg
             ),
             dailyGoalSummary = DailyGoalSummaryState(
                 stepsCurrent = currentSteps,

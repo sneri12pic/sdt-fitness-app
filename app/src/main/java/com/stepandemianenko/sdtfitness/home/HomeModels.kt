@@ -1,10 +1,16 @@
 package com.stepandemianenko.sdtfitness.home
 
+import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlin.math.min
 
 enum class DailyStepsSourceType {
+    MANUAL,
+    HEALTH_CONNECT
+}
+
+enum class DailyQuestCompletionSource {
     MANUAL,
     HEALTH_CONNECT
 }
@@ -38,6 +44,14 @@ data class DailyQuestState(
         get() = if (targetSteps <= 0) 0f else (currentSteps.toFloat() / targetSteps.toFloat()).coerceIn(0f, 1f)
 }
 
+data class WeightInQuestState(
+    val isAdded: Boolean = false,
+    val isCompleted: Boolean = false,
+    val completionSource: DailyQuestCompletionSource? = null,
+    val completedAtMillis: Long? = null,
+    val weightKg: Double? = null
+)
+
 data class DailyGoalSummaryState(
     val stepsCurrent: Int = 0,
     val stepsTarget: Int = 5_000,
@@ -60,6 +74,7 @@ data class DailyGoalSummaryState(
 
 data class HomeDashboardState(
     val dailyQuest: DailyQuestState = DailyQuestState(),
+    val weightInQuest: WeightInQuestState = WeightInQuestState(),
     val dailyGoalSummary: DailyGoalSummaryState = DailyGoalSummaryState(),
     val routineStreakDates: Set<LocalDate> = emptySet(),
     val restDay: RestDayUiState = RestDayUiState(),
@@ -82,12 +97,25 @@ data class HomeUiState(
     val dashboard: HomeDashboardState = HomeDashboardState(),
     val visibleRoutineMonth: YearMonth = YearMonth.now(),
     val isDailyQuestEditorOpen: Boolean = false,
+    val isAddCustomQuestDialogOpen: Boolean = false,
+    val isWeightInChartDialogOpen: Boolean = false,
+    val weightInChart: SetMetricChartUiModel = emptyHomeWeightChart(),
     val draftTargetSteps: String = "",
     val draftCurrentSteps: String = "",
     val activeAccountId: String? = null,
     val accounts: List<DebugAccountUiModel> = emptyList(),
     val pendingHealthConnectStepsToAdd: Int? = null
 )
+
+private fun emptyHomeWeightChart(): SetMetricChartUiModel {
+    return SetMetricChartUiModel(
+        title = "Weight Progress",
+        actualLabel = "Weight",
+        actualValues = emptyList(),
+        targetValues = emptyList(),
+        unitLabel = "kg"
+    )
+}
 
 data class DebugAccountUiModel(
     val id: String,

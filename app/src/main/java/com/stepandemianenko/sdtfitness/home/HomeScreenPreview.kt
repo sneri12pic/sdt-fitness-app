@@ -25,6 +25,13 @@ private fun previewHomeUiState(): HomeUiState {
                 currentSteps = 4_850,
                 isManual = true
             ),
+            weightInQuest = WeightInQuestState(
+                isAdded = true,
+                isCompleted = true,
+                completionSource = DailyQuestCompletionSource.HEALTH_CONNECT,
+                completedAtMillis = System.currentTimeMillis(),
+                weightKg = 82.4
+            ),
             dailyGoalSummary = DailyGoalSummaryState(
                 stepsCurrent = 4_850,
                 stepsTarget = 8_000,

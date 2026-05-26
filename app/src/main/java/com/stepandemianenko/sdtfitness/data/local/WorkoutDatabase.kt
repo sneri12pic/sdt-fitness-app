@@ -11,16 +11,18 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         AccountEntity::class,
         UserSettingsEntity::class,
+        DailyQuestRecordEntity::class,
         WorkoutSessionEntity::class,
         SessionExerciseEntity::class,
         SessionSetLogEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class WorkoutDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun userSettingsDao(): UserSettingsDao
+    abstract fun dailyQuestRecordDao(): DailyQuestRecordDao
     abstract fun workoutSessionDao(): WorkoutSessionDao
     abstract fun sessionExerciseDao(): SessionExerciseDao
     abstract fun sessionSetLogDao(): SessionSetLogDao
@@ -311,6 +313,34 @@ abstract class WorkoutDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `daily_quest_records` (
+                        `accountId` TEXT NOT NULL,
+                        `questId` TEXT NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `isAdded` INTEGER NOT NULL,
+                        `isCompleted` INTEGER NOT NULL,
+                        `completionSource` TEXT,
+                        `completedAt` INTEGER,
+                        `valueKg` REAL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncState` TEXT NOT NULL,
+                        PRIMARY KEY(`accountId`, `questId`, `date`),
+                        FOREIGN KEY(`accountId`) REFERENCES `accounts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_daily_quest_records_accountId_date` ON `daily_quest_records` (`accountId`, `date`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_daily_quest_records_accountId_questId_date` ON `daily_quest_records` (`accountId`, `questId`, `date`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_daily_quest_records_updatedAt` ON `daily_quest_records` (`updatedAt`)")
+            }
+        }
+
         fun getInstance(context: Context): WorkoutDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -318,7 +348,7 @@ abstract class WorkoutDatabase : RoomDatabase() {
                     WorkoutDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }

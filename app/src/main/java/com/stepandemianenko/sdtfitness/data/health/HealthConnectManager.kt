@@ -111,6 +111,36 @@ class HealthConnectManager(
         return response.records.firstOrNull()?.weight?.inKilograms
     }
 
+    suspend fun readTodayWeightKg(): Double? {
+        return readTodayWeightSample()?.weightKg
+    }
+
+    suspend fun readTodayWeightSample(): WeightSample? {
+        if (!isAvailable()) return null
+
+        val zone = ZoneId.systemDefault()
+        val now = Instant.now()
+        val startOfDay = LocalDate.now(zone)
+            .atStartOfDay(zone)
+            .toInstant()
+
+        val response = healthConnectClient().readRecords(
+            ReadRecordsRequest(
+                recordType = WeightRecord::class,
+                timeRangeFilter = TimeRangeFilter.between(startOfDay, now),
+                ascendingOrder = false,
+                pageSize = 1
+            )
+        )
+
+        return response.records.firstOrNull()?.let { record ->
+            WeightSample(
+                time = record.time,
+                weightKg = record.weight.inKilograms
+            )
+        }
+    }
+
     suspend fun readWeightHistory(days: Int, limit: Int = 20): List<WeightSample> {
         if (!isAvailable()) return emptyList()
 

@@ -35,6 +35,15 @@ object SetLogSource {
     const val MANUAL = "manual"
 }
 
+object DailyQuestId {
+    const val WEIGHT_IN = "weight_in"
+}
+
+object DailyQuestCompletionSource {
+    const val MANUAL = "manual"
+    const val HEALTH_CONNECT = "health_connect"
+}
+
 @Entity(
     tableName = "accounts",
     indices = [
@@ -92,6 +101,38 @@ data class UserSettingsEntity(
     val healthConnectLastSyncedAt: Long? = null,
     val healthConnectLastImportedSteps: Int? = null,
     val healthConnectLatestWeightKg: Double? = null,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deletedAt: Long? = null,
+    val syncState: String = SyncState.LOCAL_ONLY
+)
+
+@Entity(
+    tableName = "daily_quest_records",
+    primaryKeys = ["accountId", "questId", "date"],
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["accountId", "date"]),
+        Index(value = ["accountId", "questId", "date"], unique = true),
+        Index(value = ["updatedAt"])
+    ]
+)
+data class DailyQuestRecordEntity(
+    val accountId: String,
+    val questId: String,
+    val date: String,
+    val isAdded: Boolean = true,
+    val isCompleted: Boolean = false,
+    val completionSource: String? = null,
+    val completedAt: Long? = null,
+    val valueKg: Double? = null,
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,
