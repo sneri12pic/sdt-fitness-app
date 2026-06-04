@@ -1694,7 +1694,7 @@ private fun BottomNavItem(
 ) {
     Column(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .noRippleClickable(onClick)
             .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)

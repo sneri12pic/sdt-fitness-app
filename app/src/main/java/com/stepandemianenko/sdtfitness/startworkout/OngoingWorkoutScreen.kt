@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.R
+import com.stepandemianenko.sdtfitness.noRippleClickable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -1615,7 +1616,7 @@ private fun OngoingBottomNavItem(
 ) {
     Column(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .noRippleClickable(onClick)
             .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)

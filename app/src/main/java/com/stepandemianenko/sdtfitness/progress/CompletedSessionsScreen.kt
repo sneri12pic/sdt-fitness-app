@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.R
+import com.stepandemianenko.sdtfitness.noRippleClickable
 
 private val ProgressBackground = Color(0xFFEBC0B0)
 private val ProgressCardBackground = Color(0xFFF5E5DA)
@@ -328,7 +329,7 @@ private fun CompletedSessionsBottomNavItem(
 ) {
     Column(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .noRippleClickable(onClick)
             .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
