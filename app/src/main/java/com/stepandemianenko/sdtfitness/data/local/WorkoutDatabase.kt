@@ -12,17 +12,20 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AccountEntity::class,
         UserSettingsEntity::class,
         DailyQuestRecordEntity::class,
+        WorkoutPlanEntity::class,
+        WorkoutPlanExerciseEntity::class,
         WorkoutSessionEntity::class,
         SessionExerciseEntity::class,
         SessionSetLogEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class WorkoutDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun userSettingsDao(): UserSettingsDao
     abstract fun dailyQuestRecordDao(): DailyQuestRecordDao
+    abstract fun workoutPlanDao(): WorkoutPlanDao
     abstract fun workoutSessionDao(): WorkoutSessionDao
     abstract fun sessionExerciseDao(): SessionExerciseDao
     abstract fun sessionSetLogDao(): SessionSetLogDao
@@ -341,6 +344,48 @@ abstract class WorkoutDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `workout_plans` (
+                        `accountId` TEXT NOT NULL,
+                        `id` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncState` TEXT NOT NULL,
+                        PRIMARY KEY(`accountId`, `id`),
+                        FOREIGN KEY(`accountId`) REFERENCES `accounts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_workout_plans_accountId` ON `workout_plans` (`accountId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_workout_plans_accountId_name` ON `workout_plans` (`accountId`, `name`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_workout_plans_accountId_updatedAt` ON `workout_plans` (`accountId`, `updatedAt`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `workout_plan_exercises` (
+                        `accountId` TEXT NOT NULL,
+                        `planId` TEXT NOT NULL,
+                        `exerciseId` TEXT NOT NULL,
+                        `exerciseOrder` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncState` TEXT NOT NULL,
+                        PRIMARY KEY(`accountId`, `planId`, `exerciseId`),
+                        FOREIGN KEY(`accountId`, `planId`) REFERENCES `workout_plans`(`accountId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_workout_plan_exercises_accountId_planId` ON `workout_plan_exercises` (`accountId`, `planId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_workout_plan_exercises_accountId_planId_exerciseOrder` ON `workout_plan_exercises` (`accountId`, `planId`, `exerciseOrder`)")
+            }
+        }
+
         fun getInstance(context: Context): WorkoutDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -348,7 +393,13 @@ abstract class WorkoutDatabase : RoomDatabase() {
                     WorkoutDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6
+                    )
                     .build()
                     .also { INSTANCE = it }
             }

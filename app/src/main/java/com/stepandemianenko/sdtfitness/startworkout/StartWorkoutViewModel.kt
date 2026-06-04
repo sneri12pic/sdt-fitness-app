@@ -30,12 +30,33 @@ class StartWorkoutViewModel(
     val effects: SharedFlow<StartWorkoutEffect> = _effects.asSharedFlow()
     private var lastDeletedExercise: DeletedExerciseSnapshot? = null
     private val workoutSessionRepository = AppGraph.workoutSessionRepository(application)
+    private val workoutPlanRepository = AppGraph.workoutPlanRepository(application)
     private val homeRepository = AppGraph.homeRepository(application)
     private var appendToSessionId: Long? = null
     private var appendModeEnabled: Boolean = false
 
     init {
         _uiState.value = StartWorkoutFakeStateProvider.emptyState()
+
+        viewModelScope.launch {
+            workoutPlanRepository.observePlans().collect { plans ->
+                _uiState.update { current ->
+                    val customSets = plans.map { plan ->
+                        CustomExerciseSetUiModel(
+                            id = plan.id,
+                            name = plan.name,
+                            exerciseIds = plan.exerciseIds
+                        )
+                    }
+                    current.copy(
+                        customExerciseSets = customSets,
+                        selectedCustomSetId = current.selectedCustomSetId?.takeIf { selectedId ->
+                            customSets.any { it.id == selectedId }
+                        }
+                    )
+                }
+            }
+        }
 
         viewModelScope.launch {
             homeRepository.dashboardState.collect { dashboard ->
@@ -52,7 +73,14 @@ class StartWorkoutViewModel(
     fun onEvent(event: StartWorkoutUiEvent) {
         when (event) {
             StartWorkoutUiEvent.ShortenSessionClick -> applyShortenedSession()
-            StartWorkoutUiEvent.AddExerciseClick -> openExercisePicker()
+            StartWorkoutUiEvent.AddExerciseClick -> openExercisePicker(
+                title = "Add Exercise",
+                actionVerb = if (appendModeEnabled) "Add" else "Start"
+            )
+            StartWorkoutUiEvent.PlansClick -> openExercisePicker(
+                title = "Plans",
+                actionVerb = if (appendModeEnabled) "Add" else "Start"
+            )
             is StartWorkoutUiEvent.CompleteOrSkipExercise -> completeOrSkipExercise(event.exerciseId)
             is StartWorkoutUiEvent.DeleteExercise -> deleteExercise(event.exerciseId)
             StartWorkoutUiEvent.UndoDeleteExercise -> undoDeleteExercise()
@@ -123,7 +151,10 @@ class StartWorkoutViewModel(
         }
     }
 
-    private fun openExercisePicker() {
+    private fun openExercisePicker(
+        title: String,
+        actionVerb: String
+    ) {
         _uiState.update { current ->
             val selectedFromPlan = current.workoutPlan
                 ?.exercises
@@ -133,6 +164,8 @@ class StartWorkoutViewModel(
 
             current.copy(
                 isSelectingExercises = true,
+                exercisePickerTitle = title,
+                exercisePickerActionVerb = actionVerb,
                 selectedExerciseIds = selectedFromPlan ?: fallbackSelection,
                 selectedCustomSetId = current.selectedCustomSetId?.takeIf { selectedId ->
                     current.customExerciseSets.any { it.id == selectedId }
@@ -216,31 +249,38 @@ class StartWorkoutViewModel(
         val normalizedName = name.trim()
         if (normalizedName.isBlank() || exerciseIds.isEmpty()) return
 
-        _uiState.update { current ->
-            val normalizedExerciseIds = exerciseIds.toSet()
-            val existing = setId?.let { id -> current.customExerciseSets.find { it.id == id } }
-            val targetId = existing?.id ?: buildCustomSetId(
-                name = normalizedName,
-                existingIds = current.customExerciseSets.mapTo(mutableSetOf()) { it.id }
-            )
-            val updatedSet = CustomExerciseSetUiModel(
-                id = targetId,
-                name = normalizedName,
-                exerciseIds = normalizedExerciseIds
-            )
-
-            val updatedSets = if (existing != null) {
-                current.customExerciseSets.map { set ->
-                    if (set.id == existing.id) updatedSet else set
-                }
-            } else {
-                current.customExerciseSets + updatedSet
+        val current = _uiState.value
+        val normalizedExerciseIds = exerciseIds.toSet()
+        val existing = setId?.let { id -> current.customExerciseSets.find { it.id == id } }
+        val targetId = existing?.id ?: buildCustomSetId(
+            name = normalizedName,
+            existingIds = current.customExerciseSets.mapTo(mutableSetOf()) { it.id }
+        )
+        val updatedSet = CustomExerciseSetUiModel(
+            id = targetId,
+            name = normalizedName,
+            exerciseIds = normalizedExerciseIds
+        )
+        val updatedSets = if (existing != null) {
+            current.customExerciseSets.map { set ->
+                if (set.id == existing.id) updatedSet else set
             }
+        } else {
+            current.customExerciseSets + updatedSet
+        }
 
+        _uiState.update {
             current.copy(
                 customExerciseSets = updatedSets,
                 selectedCustomSetId = updatedSet.id,
                 selectedExerciseIds = normalizedExerciseIds
+            )
+        }
+        viewModelScope.launch {
+            workoutPlanRepository.savePlan(
+                id = updatedSet.id,
+                name = updatedSet.name,
+                exerciseIds = normalizedExerciseIds.toList()
             )
         }
     }
@@ -264,20 +304,24 @@ class StartWorkoutViewModel(
     }
 
     private fun deleteCustomExerciseSet(setId: String) {
-        _uiState.update { current ->
-            val updatedSets = current.customExerciseSets.filterNot { it.id == setId }
-            val fallbackSelectedSetId = current.selectedCustomSetId?.takeIf { id ->
-                updatedSets.any { it.id == id }
-            }
-            val fallbackSelectedExerciseIds = fallbackSelectedSetId
-                ?.let { selectedId -> updatedSets.find { it.id == selectedId }?.exerciseIds }
-                ?: current.selectedExerciseIds
+        val current = _uiState.value
+        val updatedSets = current.customExerciseSets.filterNot { it.id == setId }
+        val fallbackSelectedSetId = current.selectedCustomSetId?.takeIf { id ->
+            updatedSets.any { it.id == id }
+        }
+        val fallbackSelectedExerciseIds = fallbackSelectedSetId
+            ?.let { selectedId -> updatedSets.find { it.id == selectedId }?.exerciseIds }
+            ?: current.selectedExerciseIds
 
+        _uiState.update {
             current.copy(
                 customExerciseSets = updatedSets,
                 selectedCustomSetId = fallbackSelectedSetId,
                 selectedExerciseIds = fallbackSelectedExerciseIds
             )
+        }
+        viewModelScope.launch {
+            workoutPlanRepository.deletePlan(setId)
         }
     }
 
@@ -305,12 +349,19 @@ class StartWorkoutViewModel(
             val basePlan = current.workoutPlan
                 ?: StartWorkoutFakeStateProvider.defaultPlan(isShortened = current.isSessionShortened)
             val currentStreakDays = homeRepository.dashboardState.value.currentStreakCount
+            val selectedPlan = current.selectedCustomSetId
+                ?.let { selectedId -> current.customExerciseSets.find { it.id == selectedId } }
 
             current.copy(
                 isSelectingExercises = false,
                 workoutPlan = basePlan
                     .withConsistencyStreak(currentStreakDays)
-                    .copy(exercises = selectedExercises)
+                    .copy(
+                        id = selectedPlan?.id ?: basePlan.id,
+                        basedOnPlanText = selectedPlan?.let { "From your ${it.name} plan" }
+                            ?: basePlan.basedOnPlanText,
+                        exercises = selectedExercises
+                    )
             )
                 .also { shouldStartWorkout = true }
         }

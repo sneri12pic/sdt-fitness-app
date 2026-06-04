@@ -10,6 +10,7 @@ import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
 import com.stepandemianenko.sdtfitness.data.health.HealthConnectManager
 import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
 import com.stepandemianenko.sdtfitness.data.repository.ProgressRepository
+import com.stepandemianenko.sdtfitness.data.repository.WorkoutPlanRepository
 import com.stepandemianenko.sdtfitness.data.repository.WorkoutSessionRepository
 import com.stepandemianenko.sdtfitness.home.HomeRepository
 
@@ -19,6 +20,9 @@ object AppGraph {
 
     @Volatile
     private var workoutSessionRepository: WorkoutSessionRepository? = null
+
+    @Volatile
+    private var workoutPlanRepository: WorkoutPlanRepository? = null
 
     @Volatile
     private var progressRepository: ProgressRepository? = null
@@ -46,6 +50,15 @@ object AppGraph {
                 database = WorkoutDatabase.getInstance(context),
                 accountSessionManager = accountSessionManager(context)
             ).also { workoutSessionRepository = it }
+        }
+    }
+
+    fun workoutPlanRepository(context: Context): WorkoutPlanRepository {
+        return workoutPlanRepository ?: synchronized(this) {
+            workoutPlanRepository ?: WorkoutPlanRepository(
+                database = WorkoutDatabase.getInstance(context),
+                accountSessionManager = accountSessionManager(context)
+            ).also { workoutPlanRepository = it }
         }
     }
 

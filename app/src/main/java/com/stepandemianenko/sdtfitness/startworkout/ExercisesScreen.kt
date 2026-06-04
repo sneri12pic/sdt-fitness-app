@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stepandemianenko.sdtfitness.R
+import com.stepandemianenko.sdtfitness.noRippleClickable
 
 private val ExercisesBackground = Color(0xFFF3C8B9)
 private val ExercisesCardBackground = Color(0xFFF8E3D8)
@@ -74,6 +75,8 @@ private val ExercisesInfoMessageBg = Color(0xFFFFBE91).copy(alpha = 0.9f)
 
 @Composable
 fun ExercisesScreen(
+    title: String,
+    primaryActionVerb: String,
     exercises: List<ExerciseCatalogItemUiModel>,
     customExerciseSets: List<CustomExerciseSetUiModel>,
     selectedCustomSetId: String?,
@@ -128,15 +131,15 @@ fun ExercisesScreen(
         val addedCount = (selectedExerciseIds - activeCustomSet.exerciseIds).size
         val removedCount = (activeCustomSet.exerciseIds - selectedExerciseIds).size
         when {
-            addedCount == 0 && removedCount == 0 -> "Add ${activeCustomSet.name}"
-            removedCount == 0 -> "Add ${activeCustomSet.name} +$addedCount"
-            addedCount == 0 -> "Add ${activeCustomSet.name} -$removedCount"
-            else -> "Add ${activeCustomSet.name} (modified)"
+            addedCount == 0 && removedCount == 0 -> "$primaryActionVerb ${activeCustomSet.name}"
+            removedCount == 0 -> "$primaryActionVerb ${activeCustomSet.name} +$addedCount"
+            addedCount == 0 -> "$primaryActionVerb ${activeCustomSet.name} -$removedCount"
+            else -> "$primaryActionVerb ${activeCustomSet.name} (modified)"
         }
     } else if (selectedCount == 1) {
-        "Add 1 exercise"
+        "$primaryActionVerb 1 exercise"
     } else {
-        "Add $selectedCount exercises"
+        "$primaryActionVerb $selectedCount exercises"
     }
     val listBottomPadding = if (selectedCount > 0) 76.dp else 10.dp
 
@@ -166,7 +169,10 @@ fun ExercisesScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
-                    TopActionBar(onBackClick = onBackClick)
+                    TopActionBar(
+                        title = title,
+                        onBackClick = onBackClick
+                    )
                 }
 
                 item {
@@ -224,6 +230,9 @@ fun ExercisesScreen(
                             isSelected = customSet.id == selectedCustomSetId,
                             onSetClick = { onCustomSetSelect(customSet.id) },
                             onEditClick = {
+                                if (customSet.id != selectedCustomSetId) {
+                                    onCustomSetSelect(customSet.id)
+                                }
                                 namingSetId = customSet.id
                                 customSetName = customSet.name
                                 showSetNamingPanel = true
@@ -234,7 +243,7 @@ fun ExercisesScreen(
                     }
 
                     CustomSetActionBlock(
-                        text = "Create Custom Set of Exercises",
+                        text = "Create Plan",
                         onClick = {
                             if (selectedCount > 0) {
                                 namingSetId = selectedCustomSetId
@@ -322,7 +331,7 @@ fun ExercisesScreen(
 
             if (showSelectExercisesMessage) {
                 InfoMessageBlock(
-                    text = "To create Custom Set of Exercises select exercises first",
+                    text = "Select exercises before creating a plan.",
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 2.dp, vertical = 48.dp)
@@ -334,6 +343,7 @@ fun ExercisesScreen(
 
 @Composable
 private fun TopActionBar(
+    title: String,
     onBackClick: () -> Unit
 ) {
     Box(
@@ -344,7 +354,7 @@ private fun TopActionBar(
             modifier = Modifier.align(Alignment.CenterStart)
         )
         Text(
-            text = "Add Exercise",
+            text = title,
             modifier = Modifier.align(Alignment.Center),
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.titleLarge.copy(
@@ -562,7 +572,7 @@ private fun CustomSetNamingPanel(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "Name Your Set of Exercises",
+                text = "Name Your Plan",
                 style = MaterialTheme.typography.titleSmall.copy(
                     color = ExercisesText,
                     fontWeight = FontWeight.SemiBold,
@@ -570,7 +580,7 @@ private fun CustomSetNamingPanel(
                 )
             )
             Text(
-                text = "Create a name for this set of $selectedCount exercises.",
+                text = "Create a name for this plan of $selectedCount exercises.",
                 style = MaterialTheme.typography.bodySmall.copy(
                     color = ExercisesText.copy(alpha = 0.8f),
                     fontWeight = FontWeight.Medium,
@@ -661,7 +671,7 @@ private fun CreatedSetBlock(
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.start_workout_icon_edit),
-                    contentDescription = "Edit custom set name",
+                    contentDescription = "Edit plan name",
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -881,7 +891,7 @@ private fun ExercisesBottomNavItem(
 ) {
     Column(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .noRippleClickable(onClick)
             .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -911,6 +921,8 @@ private fun ExercisesScreenPreview() {
 
     MaterialTheme {
         ExercisesScreen(
+            title = "Plans",
+            primaryActionVerb = "Start",
             exercises = exercises,
             customExerciseSets = emptyList(),
             selectedCustomSetId = null,

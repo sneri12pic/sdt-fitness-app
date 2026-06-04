@@ -61,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 //import com.stepandemianenko.sdtfitness.BottomBarBg
 //import com.stepandemianenko.sdtfitness.InactiveIcon
 import com.stepandemianenko.sdtfitness.R
+import com.stepandemianenko.sdtfitness.noRippleClickable
 import kotlinx.coroutines.flow.collect
 
 private val StartWorkoutBackground = Color(0xFFEBC0B0)
@@ -113,6 +114,8 @@ fun StartWorkoutRoute(
 
     if (openAddExerciseOnStart || uiState.isSelectingExercises) {
         ExercisesScreen(
+            title = uiState.exercisePickerTitle,
+            primaryActionVerb = uiState.exercisePickerActionVerb,
             exercises = uiState.exerciseCatalog,
             customExerciseSets = uiState.customExerciseSets,
             selectedCustomSetId = uiState.selectedCustomSetId,
@@ -156,6 +159,9 @@ fun StartWorkoutRoute(
             onAddExerciseClick = {
                 viewModel.onEvent(StartWorkoutUiEvent.AddExerciseClick)
             },
+            onPlansClick = {
+                viewModel.onEvent(StartWorkoutUiEvent.PlansClick)
+            },
             snackbarHostState = snackbarHostState,
             onHomeClick = onHomeClick,
             onProgressClick = onProgressClick,
@@ -168,6 +174,7 @@ fun StartWorkoutRoute(
 fun StartWorkoutScreen(
     onBackClick: () -> Unit,
     onAddExerciseClick: () -> Unit,
+    onPlansClick: () -> Unit,
     snackbarHostState: SnackbarHostState,
     onHomeClick: () -> Unit,
     onProgressClick: () -> Unit,
@@ -191,6 +198,7 @@ fun StartWorkoutScreen(
     ) { innerPadding ->
         StartWorkoutEmptyState(
             onAddExerciseClick = onAddExerciseClick,
+            onPlansClick = onPlansClick,
             onBackClick = onBackClick,
             modifier = Modifier
                 .fillMaxSize()
@@ -810,6 +818,7 @@ private fun AddExerciseAction(
 @Composable
 private fun StartWorkoutEmptyState(
     onAddExerciseClick: () -> Unit,
+    onPlansClick: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -850,7 +859,7 @@ private fun StartWorkoutEmptyState(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "No workout plan available",
+                    text = "Workout",
                     style = MaterialTheme.typography.titleLarge.copy(
                         color = StartWorkoutPrimaryText,
                         fontWeight = FontWeight.Bold,
@@ -858,18 +867,59 @@ private fun StartWorkoutEmptyState(
                     )
                 )
                 Text(
-                    text = "You can add exercises and build a quick session to get moving.",
+                    text = "Choose a saved plan or start from an empty workout.",
                     style = MaterialTheme.typography.bodyLarge.copy(
                         color = StartWorkoutSecondaryText,
                         fontSize = StartWorkoutDimens.BodyTextSize
                     )
                 )
+                StartWorkoutSecondaryButton(
+                    text = "Plans",
+                    onClick = onPlansClick
+                )
                 StartWorkoutPrimaryButton(
-                    text = "Add Exercise",
+                    text = "Start Empty Workout",
                     onClick = onAddExerciseClick,
                     enabled = true
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun StartWorkoutSecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(StartWorkoutDimens.PrimaryButtonCorner))
+            .border(
+                width = 1.dp,
+                color = StartWorkoutDivider,
+                shape = RoundedCornerShape(StartWorkoutDimens.PrimaryButtonCorner)
+            )
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(StartWorkoutDimens.PrimaryButtonCorner),
+        color = StartWorkoutCardBackground
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    color = StartWorkoutPrimaryText,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = StartWorkoutDimens.PrimaryButtonTextSize
+                )
+            )
         }
     }
 }
@@ -1020,7 +1070,7 @@ private fun BottomNavItem(
 ) {
     Column(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .noRippleClickable(onClick)
             .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -1049,6 +1099,7 @@ private fun StartWorkoutScreenEmptyPreview() {
     StartWorkoutScreen(
         onBackClick = {},
         onAddExerciseClick = {},
+        onPlansClick = {},
         snackbarHostState = SnackbarHostState(),
         onHomeClick = {},
         onProgressClick = {},

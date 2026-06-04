@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 class WorkoutDatabaseMigrationTest {
 
     @Test
-    fun migrateFrom1To4_backfillsAccountAndScopesData() {
+    fun migrateFrom1To6_backfillsAccountAndScopesData() {
         runBlocking {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val dbName = "workout-migration-test"
@@ -135,7 +135,9 @@ class WorkoutDatabaseMigrationTest {
             .addMigrations(
                 WorkoutDatabase.MIGRATION_1_2,
                 WorkoutDatabase.MIGRATION_2_3,
-                WorkoutDatabase.MIGRATION_3_4
+                WorkoutDatabase.MIGRATION_3_4,
+                WorkoutDatabase.MIGRATION_4_5,
+                WorkoutDatabase.MIGRATION_5_6
             )
             .build()
 

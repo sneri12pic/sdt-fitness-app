@@ -11,6 +11,7 @@ import com.stepandemianenko.sdtfitness.data.local.SyncState
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsDao
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsEntity
 import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
+import com.stepandemianenko.sdtfitness.data.local.WorkoutPlanDao
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,7 @@ class AccountSessionManager(
     private val accountDao: AccountDao = database.accountDao()
     private val userSettingsDao: UserSettingsDao = database.userSettingsDao()
     private val dailyQuestRecordDao: DailyQuestRecordDao = database.dailyQuestRecordDao()
+    private val workoutPlanDao: WorkoutPlanDao = database.workoutPlanDao()
     private val sessionDao: WorkoutSessionDao = database.workoutSessionDao()
     private val sessionExerciseDao: SessionExerciseDao = database.sessionExerciseDao()
     private val setLogDao: SessionSetLogDao = database.sessionSetLogDao()
@@ -208,6 +210,7 @@ class AccountSessionManager(
             setLogDao.deleteAllForAccount(accountId)
             sessionExerciseDao.deleteAllForAccount(accountId)
             sessionDao.deleteAllForAccount(accountId)
+            workoutPlanDao.deleteAllForAccount(accountId)
             dailyQuestRecordDao.deleteAllForAccount(accountId)
             userSettingsDao.deleteForAccount(accountId)
             ensureUserSettings(accountId = accountId, now = now)

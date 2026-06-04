@@ -140,6 +140,60 @@ data class DailyQuestRecordEntity(
 )
 
 @Entity(
+    tableName = "workout_plans",
+    primaryKeys = ["accountId", "id"],
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["accountId"]),
+        Index(value = ["accountId", "name"]),
+        Index(value = ["accountId", "updatedAt"])
+    ]
+)
+data class WorkoutPlanEntity(
+    val accountId: String,
+    val id: String,
+    val name: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deletedAt: Long? = null,
+    val syncState: String = SyncState.LOCAL_ONLY
+)
+
+@Entity(
+    tableName = "workout_plan_exercises",
+    primaryKeys = ["accountId", "planId", "exerciseId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutPlanEntity::class,
+            parentColumns = ["accountId", "id"],
+            childColumns = ["accountId", "planId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["accountId", "planId"]),
+        Index(value = ["accountId", "planId", "exerciseOrder"], unique = true)
+    ]
+)
+data class WorkoutPlanExerciseEntity(
+    val accountId: String,
+    val planId: String,
+    val exerciseId: String,
+    val exerciseOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deletedAt: Long? = null,
+    val syncState: String = SyncState.LOCAL_ONLY
+)
+
+@Entity(
     tableName = "workout_sessions",
     foreignKeys = [
         ForeignKey(
