@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/startup_loading_bg" />
+
+    <item
+        android:width="164dp"
+        android:height="123dp"
+        android:drawable="@drawable/fitness_loading_logo_base_not_ready"
+        android:gravity="center" />
+</layer-list>

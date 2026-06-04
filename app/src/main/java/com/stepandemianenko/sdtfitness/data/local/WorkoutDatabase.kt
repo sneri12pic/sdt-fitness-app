@@ -11,6 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         AccountEntity::class,
         UserSettingsEntity::class,
+        ExerciseCatalogEntity::class,
         DailyQuestRecordEntity::class,
         WorkoutPlanEntity::class,
         WorkoutPlanExerciseEntity::class,
@@ -18,12 +19,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionExerciseEntity::class,
         SessionSetLogEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class WorkoutDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun userSettingsDao(): UserSettingsDao
+    abstract fun exerciseCatalogDao(): ExerciseCatalogDao
     abstract fun dailyQuestRecordDao(): DailyQuestRecordDao
     abstract fun workoutPlanDao(): WorkoutPlanDao
     abstract fun workoutSessionDao(): WorkoutSessionDao
@@ -386,6 +388,25 @@ abstract class WorkoutDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `exercise_catalog` (
+                        `id` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `muscleGroup` TEXT NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exercise_catalog_muscleGroup` ON `exercise_catalog` (`muscleGroup`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exercise_catalog_title` ON `exercise_catalog` (`title`)")
+                SeedExerciseCatalog.seed(db)
+            }
+        }
+
         fun getInstance(context: Context): WorkoutDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -398,7 +419,8 @@ abstract class WorkoutDatabase : RoomDatabase() {
                         MIGRATION_2_3,
                         MIGRATION_3_4,
                         MIGRATION_4_5,
-                        MIGRATION_5_6
+                        MIGRATION_5_6,
+                        MIGRATION_6_7
                     )
                     .build()
                     .also { INSTANCE = it }

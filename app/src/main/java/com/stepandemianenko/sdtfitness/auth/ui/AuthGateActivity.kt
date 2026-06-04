@@ -5,9 +5,9 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,17 +16,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.stepandemianenko.sdtfitness.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.Home
 import com.stepandemianenko.sdtfitness.auth.domain.SessionState
 import com.stepandemianenko.sdtfitness.auth.viewmodel.AuthUiEvent
 import com.stepandemianenko.sdtfitness.auth.viewmodel.AuthViewModel
+import com.stepandemianenko.sdtfitness.ui.components.loading.FitnessLoadingLogo
 import kotlinx.coroutines.launch
 
 class AuthGateActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_SDTFitnessApp)
         super.onCreate(savedInstanceState)
         window.setFlags(
             WindowManager.LayoutParams.FLAG_SECURE,
@@ -66,12 +71,7 @@ fun AuthGateRoute(
 
     when (uiState.sessionState) {
         SessionState.Checking -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
+            StartupLoadingScreen()
         }
 
         SessionState.SignedOut -> {
@@ -110,12 +110,24 @@ fun AuthGateRoute(
 
         is SessionState.Authenticated,
         SessionState.Guest -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
+            StartupLoadingScreen()
         }
     }
 }
+
+@Composable
+private fun StartupLoadingScreen(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(StartupLoadingBackground),
+        contentAlignment = Alignment.Center
+    ) {
+        FitnessLoadingLogo(
+            isLoading = true,
+            size = 164.dp
+        )
+    }
+}
+
+private val StartupLoadingBackground = Color(0xFFEBC0B0)

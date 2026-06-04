@@ -79,7 +79,7 @@
             android:name=".auth.ui.AuthGateActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.SDTFitnessApp">
+            android:theme="@style/Theme.SDTFitnessApp.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

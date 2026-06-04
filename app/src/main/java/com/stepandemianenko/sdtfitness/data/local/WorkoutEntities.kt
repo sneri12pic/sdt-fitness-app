@@ -108,6 +108,20 @@ data class UserSettingsEntity(
 )
 
 @Entity(
+    tableName = "exercise_catalog",
+    indices = [
+        Index(value = ["muscleGroup"]),
+        Index(value = ["title"])
+    ]
+)
+data class ExerciseCatalogEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val muscleGroup: String,
+    val sortOrder: Int
+)
+
+@Entity(
     tableName = "daily_quest_records",
     primaryKeys = ["accountId", "questId", "date"],
     foreignKeys = [

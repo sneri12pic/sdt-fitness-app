@@ -31,12 +31,30 @@ class StartWorkoutViewModel(
     private var lastDeletedExercise: DeletedExerciseSnapshot? = null
     private val workoutSessionRepository = AppGraph.workoutSessionRepository(application)
     private val workoutPlanRepository = AppGraph.workoutPlanRepository(application)
+    private val exerciseCatalogRepository = AppGraph.exerciseCatalogRepository(application)
     private val homeRepository = AppGraph.homeRepository(application)
     private var appendToSessionId: Long? = null
     private var appendModeEnabled: Boolean = false
 
     init {
         _uiState.value = StartWorkoutFakeStateProvider.emptyState()
+
+        viewModelScope.launch {
+            exerciseCatalogRepository.ensureSeeded()
+            exerciseCatalogRepository.observeExercises().collect { exercises ->
+                _uiState.update { current ->
+                    current.copy(
+                        exerciseCatalog = exercises.map { exercise ->
+                            ExerciseCatalogItemUiModel(
+                                id = exercise.id,
+                                title = exercise.title,
+                                muscleGroup = exercise.muscleGroup
+                            )
+                        }
+                    )
+                }
+            }
+        }
 
         viewModelScope.launch {
             workoutPlanRepository.observePlans().collect { plans ->
