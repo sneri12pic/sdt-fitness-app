@@ -43,6 +43,7 @@ class StartWorkout : ComponentActivity() {
                             }
                         }
                         startActivity(destinationIntent)
+                        overridePendingTransition(0, 0)
                         if (openAddExerciseOnStart) {
                             finish()
                         }
