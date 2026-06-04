@@ -67,6 +67,8 @@ import com.stepandemianenko.sdtfitness.progress.DailyStepsBarChart
 import com.stepandemianenko.sdtfitness.progress.DailyStepsBarChartPoint
 import com.stepandemianenko.sdtfitness.progress.ExerciseSetMetricChart
 import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
+import com.stepandemianenko.sdtfitness.ui.components.loading.DelayedLoadingOverlay
+import com.stepandemianenko.sdtfitness.ui.components.loading.FitnessLoadingLogo
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -131,6 +133,12 @@ private const val HealthConnectProviderPackageName = "com.google.android.apps.he
 private val ProgressHorizontalPadding = 20.dp
 private val ProgressTopPadding = 30.dp
 private val ProgressBottomInsetCorner = 16.dp
+private const val ProgressLoaderShowDelayMillis = 180L
+private const val ProgressMinLoaderVisibleMillis = 700L
+private const val ProgressLoaderReadyHoldMillis = 400L
+private const val ProgressLoaderExitFadeMillis = 300
+private val ProgressLoaderBlurRadius = 12.dp
+private const val ProgressLoaderScrimAlpha = 0.34f
 
 private enum class HealthMetricDialog {
     STEPS,
@@ -205,44 +213,64 @@ fun ProgressScreen(
         modifier = Modifier.fillMaxSize(),
         color = ProgressBackground
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val reservedBottomHeight = maxHeight * ProgressReservedBottomFraction
+        DelayedLoadingOverlay(
+            isLoading = uiState.isLoading,
+            modifier = Modifier.fillMaxSize(),
+            showDelayMillis = ProgressLoaderShowDelayMillis,
+            minVisibleMillis = ProgressMinLoaderVisibleMillis,
+            exitFadeMillis = ProgressLoaderExitFadeMillis,
+            blurRadius = ProgressLoaderBlurRadius,
+            scrimAlpha = ProgressLoaderScrimAlpha,
+            content = {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val reservedBottomHeight = maxHeight * ProgressReservedBottomFraction
 
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                Column(
-                    modifier = Modifier
-                        .widthIn(max = ProgressContentMaxWidth)
-                        .fillMaxSize()
-                ) {
-                    ProgressContent(
-                        uiState = uiState,
-                        onConnectHealthConnectClick = onConnectHealthConnectClick,
-                        onOpenHealthConnectSettingsClick = onOpenHealthConnectSettingsClick,
-                        onRefreshHealthConnectClick = onRefreshHealthConnectClick,
-                        onCompletedSessionsClick = onCompletedSessionsClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(
-                                start = ProgressHorizontalPadding,
-                                end = ProgressHorizontalPadding,
-                                top = ProgressTopPadding,
-                                bottom = reservedBottomHeight
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = ProgressContentMaxWidth)
+                                .fillMaxSize()
+                        ) {
+                            ProgressContent(
+                                uiState = uiState,
+                                onConnectHealthConnectClick = onConnectHealthConnectClick,
+                                onOpenHealthConnectSettingsClick = onOpenHealthConnectSettingsClick,
+                                onRefreshHealthConnectClick = onRefreshHealthConnectClick,
+                                onCompletedSessionsClick = onCompletedSessionsClick,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(
+                                        start = ProgressHorizontalPadding,
+                                        end = ProgressHorizontalPadding,
+                                        top = ProgressTopPadding,
+                                        bottom = reservedBottomHeight
+                                    )
                             )
-                    )
-                }
+                        }
 
-                ProgressBottomNavigationBar(
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    onHomeClick = onHomeClick,
-                    onWorkoutClick = onWorkoutClick,
-                    onProfileClick = onProfileClick
+                        ProgressBottomNavigationBar(
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            onHomeClick = onHomeClick,
+                            onWorkoutClick = onWorkoutClick,
+                            onProfileClick = onProfileClick
+                        )
+                    }
+                }
+            },
+            loadingContent = { isLogoLoading, onLogoFinished, logoModifier ->
+                FitnessLoadingLogo(
+                    isLoading = isLogoLoading,
+                    modifier = logoModifier,
+                    size = 164.dp,
+                    completedHoldMillis = ProgressLoaderReadyHoldMillis,
+                    onFinished = onLogoFinished
                 )
             }
-        }
+        )
     }
 }
 
@@ -262,14 +290,6 @@ private fun ProgressContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         ProgressHeaderSection()
-        if (uiState.isLoading) {
-            Text(
-                text = "Loading completed workout data...",
-                color = ProgressSecondaryText,
-                fontSize = 14.sp,
-                lineHeight = 16.sp
-            )
-        }
         SectionTitle(title = "Consistency")
         Column(
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -889,7 +909,7 @@ private fun ProgressBottomNavItem(
 ) {
     Column(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .noRippleClickable(onClick)
             .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
