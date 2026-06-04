@@ -7,11 +7,14 @@ import com.stepandemianenko.sdtfitness.auth.data.HttpRemoteAuthDataSource
 import com.stepandemianenko.sdtfitness.auth.data.SecureSessionStore
 import com.stepandemianenko.sdtfitness.auth.domain.AuthRepository
 import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.cache.ProgressMemoryCache
 import com.stepandemianenko.sdtfitness.data.health.HealthConnectManager
 import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
-import com.stepandemianenko.sdtfitness.data.repository.ProgressRepository
 import com.stepandemianenko.sdtfitness.data.repository.WorkoutPlanRepository
+import com.stepandemianenko.sdtfitness.data.repository.ProgressRepositoryImpl
 import com.stepandemianenko.sdtfitness.data.repository.WorkoutSessionRepository
+import com.stepandemianenko.sdtfitness.domain.repository.ProgressRepository
+import com.stepandemianenko.sdtfitness.domain.usecase.GetProgressSnapshotUseCase
 import com.stepandemianenko.sdtfitness.home.HomeRepository
 
 object AppGraph {
@@ -26,6 +29,12 @@ object AppGraph {
 
     @Volatile
     private var progressRepository: ProgressRepository? = null
+
+    @Volatile
+    private var progressMemoryCache: ProgressMemoryCache? = null
+
+    @Volatile
+    private var getProgressSnapshotUseCase: GetProgressSnapshotUseCase? = null
 
     @Volatile
     private var homeRepository: HomeRepository? = null
@@ -64,10 +73,19 @@ object AppGraph {
 
     fun progressRepository(context: Context): ProgressRepository {
         return progressRepository ?: synchronized(this) {
-            progressRepository ?: ProgressRepository(
+            progressRepository ?: ProgressRepositoryImpl(
                 database = WorkoutDatabase.getInstance(context),
-                accountSessionManager = accountSessionManager(context)
+                accountSessionManager = accountSessionManager(context),
+                progressMemoryCache = progressMemoryCache()
             ).also { progressRepository = it }
+        }
+    }
+
+    fun getProgressSnapshotUseCase(context: Context): GetProgressSnapshotUseCase {
+        return getProgressSnapshotUseCase ?: synchronized(this) {
+            getProgressSnapshotUseCase ?: GetProgressSnapshotUseCase(
+                repository = progressRepository(context)
+            ).also { getProgressSnapshotUseCase = it }
         }
     }
 
@@ -94,6 +112,13 @@ object AppGraph {
                 secureSessionStore = SecureSessionStore(context.applicationContext),
                 accountSessionManager = accountSessionManager(context)
             ).also { authRepository = it }
+        }
+    }
+
+    private fun progressMemoryCache(): ProgressMemoryCache {
+        return progressMemoryCache ?: synchronized(this) {
+            progressMemoryCache ?: ProgressMemoryCache()
+                .also { progressMemoryCache = it }
         }
     }
 }

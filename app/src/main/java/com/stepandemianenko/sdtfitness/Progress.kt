@@ -62,15 +62,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.lifecycleScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
+import com.stepandemianenko.sdtfitness.domain.model.ProgressSnapshot
 import com.stepandemianenko.sdtfitness.home.DailyStepsSourceType
 import com.stepandemianenko.sdtfitness.progress.DailyStepsBarChart
 import com.stepandemianenko.sdtfitness.progress.DailyStepsBarChartPoint
 import com.stepandemianenko.sdtfitness.progress.ExerciseSetMetricChart
+import com.stepandemianenko.sdtfitness.progress.ProgressUiState
+import com.stepandemianenko.sdtfitness.progress.ProgressViewModel
 import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import com.stepandemianenko.sdtfitness.ui.components.loading.DelayedLoadingOverlay
 import com.stepandemianenko.sdtfitness.ui.components.loading.FitnessLoadingLogo
 import kotlinx.coroutines.launch
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class Progress : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -200,7 +204,7 @@ fun ProgressRoute(
 
 @Composable
 fun ProgressScreen(
-    uiState: ProgressUiState = ProgressUiState(isLoading = false),
+    uiState: ProgressUiState = ProgressUiState(data = previewProgressSnapshot()),
     onConnectHealthConnectClick: () -> Unit = {},
     onOpenHealthConnectSettingsClick: () -> Unit = {},
     onRefreshHealthConnectClick: () -> Unit = {},
@@ -213,8 +217,9 @@ fun ProgressScreen(
         modifier = Modifier.fillMaxSize(),
         color = ProgressBackground
     ) {
+        val snapshot = uiState.data
         DelayedLoadingOverlay(
-            isLoading = uiState.isLoading,
+            isLoading = snapshot == null && uiState.isInitialLoading,
             modifier = Modifier.fillMaxSize(),
             showDelayMillis = ProgressLoaderShowDelayMillis,
             minVisibleMillis = ProgressMinLoaderVisibleMillis,
@@ -234,22 +239,45 @@ fun ProgressScreen(
                                 .widthIn(max = ProgressContentMaxWidth)
                                 .fillMaxSize()
                         ) {
-                            ProgressContent(
-                                uiState = uiState,
-                                onConnectHealthConnectClick = onConnectHealthConnectClick,
-                                onOpenHealthConnectSettingsClick = onOpenHealthConnectSettingsClick,
-                                onRefreshHealthConnectClick = onRefreshHealthConnectClick,
-                                onCompletedSessionsClick = onCompletedSessionsClick,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(
-                                        start = ProgressHorizontalPadding,
-                                        end = ProgressHorizontalPadding,
-                                        top = ProgressTopPadding,
-                                        bottom = reservedBottomHeight
+                            when {
+                                snapshot != null -> {
+                                    ProgressContent(
+                                        snapshot = snapshot,
+                                        uiState = uiState,
+                                        onConnectHealthConnectClick = onConnectHealthConnectClick,
+                                        onOpenHealthConnectSettingsClick = onOpenHealthConnectSettingsClick,
+                                        onRefreshHealthConnectClick = onRefreshHealthConnectClick,
+                                        onCompletedSessionsClick = onCompletedSessionsClick,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .verticalScroll(rememberScrollState())
+                                            .padding(
+                                                start = ProgressHorizontalPadding,
+                                                end = ProgressHorizontalPadding,
+                                                top = ProgressTopPadding,
+                                                bottom = reservedBottomHeight
+                                            )
                                     )
-                            )
+                                }
+
+                                uiState.errorMessage != null && !uiState.isInitialLoading -> {
+                                    ProgressFullErrorState(
+                                        message = uiState.errorMessage,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(
+                                                start = ProgressHorizontalPadding,
+                                                end = ProgressHorizontalPadding,
+                                                top = ProgressTopPadding,
+                                                bottom = reservedBottomHeight
+                                            )
+                                    )
+                                }
+
+                                else -> {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
                         }
 
                         ProgressBottomNavigationBar(
@@ -276,6 +304,7 @@ fun ProgressScreen(
 
 @Composable
 private fun ProgressContent(
+    snapshot: ProgressSnapshot,
     uiState: ProgressUiState,
     onConnectHealthConnectClick: () -> Unit,
     onOpenHealthConnectSettingsClick: () -> Unit,
@@ -290,6 +319,12 @@ private fun ProgressContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         ProgressHeaderSection()
+        if (uiState.isRefreshing) {
+            ProgressInlineStatus(text = "Refreshing progress...")
+        }
+        if (uiState.errorMessage != null) {
+            ProgressInlineStatus(text = uiState.errorMessage)
+        }
         SectionTitle(title = "Consistency")
         Column(
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -297,15 +332,15 @@ private fun ProgressContent(
             ConsistencyCard(
                 modifier = Modifier.fillMaxWidth(),
                 iconRes = R.drawable.start_workout_streak_icon,
-                title = uiState.consistencyTitle,
-                subtitle = uiState.consistencySubtitle,
+                title = "${snapshot.completedSessions} Sessions",
+                subtitle = snapshot.weeklyDeltaText(),
                 onClick = onCompletedSessionsClick
             )
             ConsistencyCard(
                 modifier = Modifier.fillMaxWidth(),
                 iconRes = R.drawable.calendar_streak_consistency,
-                title = "${uiState.workoutDays} Workout Days",
-                subtitle = uiState.streakSubtitle
+                title = "${snapshot.workoutDays} Workout Days",
+                subtitle = if (snapshot.streakDays > 0) "${snapshot.streakDays}-day continuity" else "No streak yet"
             )
         }
 
@@ -320,8 +355,8 @@ private fun ProgressContent(
                         .weight(1f)
                         .fillMaxHeight(),
                     title = "Best Lift",
-                    value = uiState.bestLiftValue,
-                    subtitle = uiState.bestLiftSubtitle,
+                    value = if (snapshot.bestLiftKg > 0) "${snapshot.bestLiftKg} kg" else "No lift logged",
+                    subtitle = "Heaviest completed set",
                     badge = "Completed",
                     iconRes = R.drawable.trophy_star
                 )
@@ -330,16 +365,24 @@ private fun ProgressContent(
                         .weight(1f)
                         .fillMaxHeight(),
                     title = "Volume",
-                    value = uiState.volumeValue,
-                    subtitle = uiState.volumeSubtitle,
+                    value = "${formatWhole(snapshot.totalVolumeKg)} kg",
+                    subtitle = if (snapshot.latestSessionCompletedToday) {
+                        "+${formatWhole(snapshot.latestSessionVolumeKg)} kg today"
+                    } else {
+                        "Across completed sessions"
+                    },
                     badge = "Completed",
                     iconRes = R.drawable.medal
                 )
             }
             MasteryCard(
                 title = "Session Load",
-                value = uiState.personalBestsValue,
-                subtitle = uiState.personalBestsSubtitle,
+                value = "${snapshot.totalSets} sets logged",
+                subtitle = if (snapshot.latestSessionCompletedToday) {
+                    formatSessionLoadDeltaText(snapshot.latestSessionSets)
+                } else {
+                    "${snapshot.totalReps} reps total"
+                },
                 iconRes = R.drawable.medal
             )
         }
@@ -392,12 +435,12 @@ private fun ProgressContent(
         SectionTitle(title = "Achievements")
         AchievementsCard(
             items = listOf(
-                AchievementItem(R.drawable.trophy_star, "${uiState.completedSessions} sessions completed"),
+                AchievementItem(R.drawable.trophy_star, "${snapshot.completedSessions} sessions completed"),
                 AchievementItem(
                     R.drawable.calendar_streak_consistency,
-                    if (uiState.streakDays > 0) "${uiState.streakDays}-day routine streak" else "Start your first workout streak"
+                    if (snapshot.streakDays > 0) "${snapshot.streakDays}-day routine streak" else "Start your first workout streak"
                 ),
-                AchievementItem(R.drawable.trend, "Top volume: ${uiState.topExerciseText}")
+                AchievementItem(R.drawable.trend, "Top volume: ${snapshot.topExerciseText()}")
             )
         )
     }
@@ -442,6 +485,47 @@ private fun SectionTitle(title: String) {
         lineHeight = 24.sp,
         fontWeight = FontWeight.Bold
     )
+}
+
+@Composable
+private fun ProgressInlineStatus(text: String) {
+    Text(
+        text = text,
+        color = ProgressSecondaryText,
+        fontSize = 13.sp,
+        lineHeight = 15.sp
+    )
+}
+
+@Composable
+private fun ProgressFullErrorState(
+    message: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        ProgressHeaderSection()
+        ProgressCard(minHeight = 112.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Progress unavailable",
+                    color = ProgressPrimaryText,
+                    fontSize = 18.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = message,
+                    color = ProgressSecondaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -754,6 +838,51 @@ private fun formatWeightKg(weightKg: Double?): String {
 
 private fun formatStepsSourceLabel(sourceType: DailyStepsSourceType): String {
     return if (sourceType == DailyStepsSourceType.MANUAL) "Manual" else "Imported"
+}
+
+private fun ProgressSnapshot.weeklyDeltaText(): String {
+    val weeklyDelta = last7DaySessions - previous7DaySessions
+    return when {
+        weeklyDelta > 0 -> "+$weeklyDelta vs previous 7 days"
+        weeklyDelta < 0 -> "$weeklyDelta vs previous 7 days"
+        else -> "Same as previous 7 days"
+    }
+}
+
+private fun ProgressSnapshot.topExerciseText(): String {
+    return topExerciseName?.let { exerciseName ->
+        val topVolume = topExerciseVolumeKg?.let(::formatWhole) ?: "0"
+        "$exerciseName ($topVolume kg)"
+    } ?: "Top volume exercise will appear here"
+}
+
+private fun formatSessionLoadDeltaText(sessionSets: Int): String {
+    return if (sessionSets > 0) "+$sessionSets sets today" else "Completed today"
+}
+
+private fun formatWhole(value: Double): String {
+    return "%,d".format(value.roundToInt())
+}
+
+private fun previewProgressSnapshot(): ProgressSnapshot {
+    return ProgressSnapshot(
+        completedSessions = 12,
+        workoutDays = 9,
+        streakDays = 3,
+        last7DaySessions = 3,
+        previous7DaySessions = 2,
+        totalSets = 148,
+        totalReps = 1240,
+        totalVolumeKg = 24350.0,
+        bestLiftKg = 120,
+        topExerciseName = "Bench Press",
+        topExerciseVolumeKg = 8400.0,
+        latestSessionCompletedToday = true,
+        latestSessionVolumeKg = 2350.0,
+        latestSessionSets = 16,
+        latestSessionReps = 134,
+        generatedAtMillis = 0L
+    )
 }
 
 @Composable
