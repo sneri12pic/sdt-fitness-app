@@ -78,18 +78,21 @@ data class DailyGoalSummaryState(
     val stepsTarget: Int = 5_000,
     val workoutsCompleted: Int = 0,
     val workoutsTarget: Int = 1,
-    val activeMinutesCurrent: Int = 0,
-    val activeMinutesTarget: Int = 30
+    val questsCompleted: Int = 0,
+    val questsTarget: Int = 1
 ) {
     val workoutsCompletedCapped: Int
         get() = min(workoutsCompleted, workoutsTarget)
+
+    val questsCompletedCapped: Int
+        get() = min(questsCompleted, questsTarget)
 
     val overallProgress: Float
         get() {
             val stepRatio = if (stepsTarget <= 0) 0f else (stepsCurrent.toFloat() / stepsTarget.toFloat()).coerceIn(0f, 1f)
             val workoutRatio = if (workoutsTarget <= 0) 0f else (workoutsCompletedCapped.toFloat() / workoutsTarget.toFloat()).coerceIn(0f, 1f)
-            val activeRatio = if (activeMinutesTarget <= 0) 0f else (activeMinutesCurrent.toFloat() / activeMinutesTarget.toFloat()).coerceIn(0f, 1f)
-            return ((stepRatio + workoutRatio + activeRatio) / 3f).coerceIn(0f, 1f)
+            val questRatio = if (questsTarget <= 0) 0f else (questsCompletedCapped.toFloat() / questsTarget.toFloat()).coerceIn(0f, 1f)
+            return ((stepRatio + workoutRatio + questRatio) / 3f).coerceIn(0f, 1f)
         }
 }
 

@@ -50,8 +50,8 @@ private fun previewHomeUiState(): HomeUiState {
                 stepsTarget = 8_000,
                 workoutsCompleted = 1,
                 workoutsTarget = 1,
-                activeMinutesCurrent = 22,
-                activeMinutesTarget = 30
+                questsCompleted = 2,
+                questsTarget = 3
             ),
             routineStreakDates = setOf(
                 today.minusDays(4),

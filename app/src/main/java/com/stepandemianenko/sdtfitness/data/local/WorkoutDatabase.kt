@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionExerciseEntity::class,
         SessionSetLogEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class WorkoutDatabase : RoomDatabase() {
@@ -436,6 +436,25 @@ abstract class WorkoutDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `weightInQuestEnabled` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    """
+                    UPDATE `user_settings`
+                    SET `weightInQuestEnabled` = 1
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM `daily_quest_records`
+                        WHERE `daily_quest_records`.`accountId` = `user_settings`.`accountId`
+                          AND `daily_quest_records`.`questId` = 'weight_in'
+                          AND `daily_quest_records`.`isAdded` = 1
+                    )
+                    """
+                )
+            }
+        }
+
         fun getInstance(context: Context): WorkoutDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -450,7 +469,8 @@ abstract class WorkoutDatabase : RoomDatabase() {
                         MIGRATION_4_5,
                         MIGRATION_5_6,
                         MIGRATION_6_7,
-                        MIGRATION_7_8
+                        MIGRATION_7_8,
+                        MIGRATION_8_9
                     )
                     .build()
                     .also { INSTANCE = it }

@@ -51,14 +51,14 @@ class HomeModelsTest {
     }
 
     @Test
-    fun dailyGoalSummaryOverallProgress_averagesStepsWorkoutsAndActiveMinutes() {
+    fun dailyGoalSummaryOverallProgress_averagesStepsWorkoutsAndQuests() {
         val summary = DailyGoalSummaryState(
             stepsCurrent = 2_500,
             stepsTarget = 5_000,
             workoutsCompleted = 1,
             workoutsTarget = 1,
-            activeMinutesCurrent = 15,
-            activeMinutesTarget = 30
+            questsCompleted = 1,
+            questsTarget = 2
         )
 
         assertEquals(0.666f, summary.overallProgress, 0.001f)
@@ -71,11 +71,12 @@ class HomeModelsTest {
             stepsTarget = 5_000,
             workoutsCompleted = 3,
             workoutsTarget = 1,
-            activeMinutesCurrent = 30,
-            activeMinutesTarget = 30
+            questsCompleted = 4,
+            questsTarget = 2
         )
 
         assertEquals(1f, summary.workoutsCompletedCapped.toFloat(), 0.001f)
+        assertEquals(2f, summary.questsCompletedCapped.toFloat(), 0.001f)
         assertEquals(1f, summary.overallProgress, 0.001f)
     }
 

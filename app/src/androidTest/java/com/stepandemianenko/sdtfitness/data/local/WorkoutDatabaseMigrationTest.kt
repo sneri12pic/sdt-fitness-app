@@ -139,7 +139,8 @@ class WorkoutDatabaseMigrationTest {
                 WorkoutDatabase.MIGRATION_4_5,
                 WorkoutDatabase.MIGRATION_5_6,
                 WorkoutDatabase.MIGRATION_6_7,
-                WorkoutDatabase.MIGRATION_7_8
+                WorkoutDatabase.MIGRATION_7_8,
+                WorkoutDatabase.MIGRATION_8_9
             )
             .build()
 
@@ -165,6 +166,7 @@ class WorkoutDatabaseMigrationTest {
         assertEquals(null, migratedSettings?.healthConnectLastImportedSteps)
         assertEquals(null, migratedSettings?.healthConnectLatestWeightKg)
         assertEquals(null, migratedSettings?.healthConnectLastSyncedAt)
+        assertEquals(false, migratedSettings?.weightInQuestEnabled)
         assertEquals(false, migratedSettings?.creatineQuestEnabled)
         assertEquals(5, migratedSettings?.creatineTargetGrams)
         assertEquals(5, migratedSettings?.creatinePortionGrams)

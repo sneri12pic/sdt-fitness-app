@@ -102,6 +102,7 @@ data class UserSettingsEntity(
     val healthConnectLastSyncedAt: Long? = null,
     val healthConnectLastImportedSteps: Int? = null,
     val healthConnectLatestWeightKg: Double? = null,
+    @ColumnInfo(defaultValue = "0") val weightInQuestEnabled: Boolean = false,
     @ColumnInfo(defaultValue = "0") val creatineQuestEnabled: Boolean = false,
     @ColumnInfo(defaultValue = "5") val creatineTargetGrams: Int = 5,
     @ColumnInfo(defaultValue = "5") val creatinePortionGrams: Int = 5,

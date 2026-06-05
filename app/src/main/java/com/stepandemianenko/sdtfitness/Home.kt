@@ -214,8 +214,10 @@ fun HomeRoute(
         onOpenAddCustomQuestDialog = { viewModel.onEvent(HomeUiEvent.OpenAddCustomQuestDialog) },
         onDismissAddCustomQuestDialog = { viewModel.onEvent(HomeUiEvent.DismissAddCustomQuestDialog) },
         onAddWeightInQuest = { viewModel.onEvent(HomeUiEvent.AddWeightInQuest) },
+        onRemoveWeightInQuest = { viewModel.onEvent(HomeUiEvent.RemoveWeightInQuest) },
         onToggleWeightInQuestCompletion = { viewModel.onEvent(HomeUiEvent.ToggleWeightInQuestCompletion) },
         onAddCreatineIntakeQuest = { viewModel.onEvent(HomeUiEvent.AddCreatineIntakeQuest) },
+        onRemoveCreatineIntakeQuest = { viewModel.onEvent(HomeUiEvent.RemoveCreatineIntakeQuest) },
         onOpenCreatineOverlay = { viewModel.onEvent(HomeUiEvent.OpenCreatineOverlay) },
         onDismissCreatineOverlay = { viewModel.onEvent(HomeUiEvent.DismissCreatineOverlay) },
         onAddCreatinePortion = { viewModel.onEvent(HomeUiEvent.AddCreatinePortion) },
@@ -257,8 +259,10 @@ fun HomeOneScreen(
     onOpenAddCustomQuestDialog: () -> Unit = {},
     onDismissAddCustomQuestDialog: () -> Unit = {},
     onAddWeightInQuest: () -> Unit = {},
+    onRemoveWeightInQuest: () -> Unit = {},
     onToggleWeightInQuestCompletion: () -> Unit = {},
     onAddCreatineIntakeQuest: () -> Unit = {},
+    onRemoveCreatineIntakeQuest: () -> Unit = {},
     onOpenCreatineOverlay: () -> Unit = {},
     onDismissCreatineOverlay: () -> Unit = {},
     onAddCreatinePortion: () -> Unit = {},
@@ -432,6 +436,7 @@ fun HomeOneScreen(
                     onAddPortion = onAddCreatinePortion,
                     onSetTarget = onOpenCreatineTargetEditor,
                     onSetPortion = onOpenCreatinePortionEditor,
+                    onRemoveQuest = onRemoveCreatineIntakeQuest,
                     onDeletePortion = onDeleteCreatinePortion,
                     onDismiss = onDismissCreatineOverlay
                 )
@@ -464,6 +469,7 @@ fun HomeOneScreen(
             if (uiState.isWeightInChartDialogOpen) {
                 WeightInChartDialog(
                     chart = uiState.weightInChart,
+                    onRemoveQuest = onRemoveWeightInQuest,
                     onDismiss = onDismissWeightInChartDialog
                 )
             }
@@ -1010,7 +1016,8 @@ private fun DailyProgressCard(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "${summary.activeMinutesCurrent} / ${summary.activeMinutesTarget} active min",
+                    text = "${summary.questsCompletedCapped} / ${summary.questsTarget} " +
+                        if (summary.questsTarget == 1) "quest" else "quests",
                     color = SecondaryText,
                     fontSize = 14.sp,
                     lineHeight = 16.sp,
@@ -1373,6 +1380,7 @@ private fun AddCustomQuestDialog(
 @Composable
 private fun WeightInChartDialog(
     chart: SetMetricChartUiModel,
+    onRemoveQuest: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -1396,6 +1404,15 @@ private fun WeightInChartDialog(
                     fontWeight = FontWeight.SemiBold
                 )
             }
+        },
+        dismissButton = {
+            TextButton(onClick = onRemoveQuest) {
+                Text(
+                    text = "Remove quest",
+                    color = ActionColor,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     )
 }
@@ -1406,6 +1423,7 @@ private fun CreatineIntakeOverlay(
     onAddPortion: () -> Unit,
     onSetTarget: () -> Unit,
     onSetPortion: () -> Unit,
+    onRemoveQuest: () -> Unit,
     onDeletePortion: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1451,6 +1469,13 @@ private fun CreatineIntakeOverlay(
                             onClick = {
                                 isMenuExpanded = false
                                 onSetPortion()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove quest", color = ActionColor) },
+                            onClick = {
+                                isMenuExpanded = false
+                                onRemoveQuest()
                             }
                         )
                     }

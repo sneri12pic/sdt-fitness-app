@@ -99,7 +99,7 @@ class HomeRepository(
                         updatedAt = now
                     )
                 )
-                if (todayWeightKg != null) {
+                if (todayWeightKg != null && current.weightInQuestEnabled) {
                     upsertWeightInRecord(
                         accountId = accountId,
                         date = todayKey,
@@ -121,6 +121,14 @@ class HomeRepository(
             val now = System.currentTimeMillis()
             val todayKey = LocalDate.now().toString()
             database.withTransaction {
+                val settings = userSettingsDao.getByAccountId(accountId)
+                    ?: defaultSettings(accountId = accountId, now = now)
+                userSettingsDao.upsert(
+                    settings.copy(
+                        weightInQuestEnabled = true,
+                        updatedAt = now
+                    )
+                )
                 upsertWeightInRecord(
                     accountId = accountId,
                     date = todayKey,
@@ -135,9 +143,21 @@ class HomeRepository(
         }
     }
 
+    fun removeWeightInQuest() {
+        mutateSettings { current, _ ->
+            current.copy(weightInQuestEnabled = false)
+        }
+    }
+
     fun addCreatineIntakeQuest() {
         mutateSettings { current, _ ->
             current.copy(creatineQuestEnabled = true)
+        }
+    }
+
+    fun removeCreatineIntakeQuest() {
+        mutateSettings { current, _ ->
+            current.copy(creatineQuestEnabled = false)
         }
     }
 
@@ -424,6 +444,17 @@ class HomeRepository(
         val weightInSource = weightInRecord?.completionSource?.let { sourceName ->
             runCatching { DailyQuestCompletionSource.valueOf(sourceName) }.getOrNull()
         }
+        val dailyQuestCompleted = currentSteps >= targetSteps
+        val weightInQuestCompleted = weightInQuestEnabled && weightInRecord?.isCompleted == true
+        val creatineCurrentGrams = creatineLogs.sumOf { it.amountGrams.toLong() }
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+        val safeCreatineTarget = creatineTargetGrams.coerceAtLeast(1)
+        val creatineQuestCompleted = creatineQuestEnabled && creatineCurrentGrams >= safeCreatineTarget
+        val questsTarget = 1 + weightInQuestEnabled.asCount() + creatineQuestEnabled.asCount()
+        val questsCompleted = dailyQuestCompleted.asCount() +
+            weightInQuestCompleted.asCount() +
+            creatineQuestCompleted.asCount()
 
         return HomeDashboardState(
             dailyQuest = DailyQuestState(
@@ -434,7 +465,7 @@ class HomeRepository(
                 lastUpdatedMillis = dailyStepsLastUpdated
             ),
             weightInQuest = WeightInQuestState(
-                isAdded = weightInRecord?.isAdded == true,
+                isAdded = weightInQuestEnabled,
                 isCompleted = weightInRecord?.isCompleted == true,
                 completionSource = weightInSource,
                 completedAtMillis = weightInRecord?.completedAt,
@@ -442,10 +473,8 @@ class HomeRepository(
             ),
             creatineIntakeQuest = CreatineIntakeQuestState(
                 isAdded = creatineQuestEnabled,
-                currentGramsToday = creatineLogs.sumOf { it.amountGrams.toLong() }
-                    .coerceAtMost(Int.MAX_VALUE.toLong())
-                    .toInt(),
-                targetGrams = creatineTargetGrams.coerceAtLeast(1),
+                currentGramsToday = creatineCurrentGrams,
+                targetGrams = safeCreatineTarget,
                 portionGrams = creatinePortionGrams.coerceAtLeast(1),
                 todayLogs = creatineLogs.map { log ->
                     CreatineIntakeLog(
@@ -460,8 +489,8 @@ class HomeRepository(
                 stepsTarget = targetSteps,
                 workoutsCompleted = workoutsCompletedToday,
                 workoutsTarget = 1,
-                activeMinutesCurrent = activeMinutesToday.coerceAtLeast(0),
-                activeMinutesTarget = DEFAULT_ACTIVE_MINUTES_TARGET
+                questsCompleted = questsCompleted,
+                questsTarget = questsTarget
             ),
             routineStreakDates = routineDates,
             restDay = RestDayUiState(
@@ -491,7 +520,6 @@ class HomeRepository(
             .joinToString(separator = ",")
     }
 
-    companion object {
-        private const val DEFAULT_ACTIVE_MINUTES_TARGET = 30
-    }
 }
+
+private fun Boolean.asCount(): Int = if (this) 1 else 0

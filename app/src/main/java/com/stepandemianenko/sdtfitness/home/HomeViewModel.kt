@@ -19,8 +19,10 @@ sealed interface HomeUiEvent {
     data object OpenAddCustomQuestDialog : HomeUiEvent
     data object DismissAddCustomQuestDialog : HomeUiEvent
     data object AddWeightInQuest : HomeUiEvent
+    data object RemoveWeightInQuest : HomeUiEvent
     data object ToggleWeightInQuestCompletion : HomeUiEvent
     data object AddCreatineIntakeQuest : HomeUiEvent
+    data object RemoveCreatineIntakeQuest : HomeUiEvent
     data object OpenCreatineOverlay : HomeUiEvent
     data object DismissCreatineOverlay : HomeUiEvent
     data object AddCreatinePortion : HomeUiEvent
@@ -116,6 +118,11 @@ class HomeViewModel(
                 _uiState.update { it.copy(isAddCustomQuestDialogOpen = false) }
             }
 
+            HomeUiEvent.RemoveWeightInQuest -> {
+                repository.removeWeightInQuest()
+                _uiState.update { it.copy(isWeightInChartDialogOpen = false) }
+            }
+
             HomeUiEvent.ToggleWeightInQuestCompletion -> {
                 val currentCompleted = _uiState.value.dashboard.weightInQuest.isCompleted
                 repository.setTodayWeightInCompleted(completed = !currentCompleted)
@@ -124,6 +131,17 @@ class HomeViewModel(
             HomeUiEvent.AddCreatineIntakeQuest -> {
                 repository.addCreatineIntakeQuest()
                 _uiState.update { it.copy(isAddCustomQuestDialogOpen = false) }
+            }
+
+            HomeUiEvent.RemoveCreatineIntakeQuest -> {
+                repository.removeCreatineIntakeQuest()
+                _uiState.update {
+                    it.copy(
+                        isCreatineOverlayOpen = false,
+                        isCreatineTargetEditorOpen = false,
+                        isCreatinePortionEditorOpen = false
+                    )
+                }
             }
 
             HomeUiEvent.OpenCreatineOverlay -> {
