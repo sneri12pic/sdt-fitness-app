@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -1587,20 +1586,35 @@ private fun OngoingBottomNavigationBar(
     onProgressClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-            .background(BottomBarBg)
-            .border(width = 1.dp, color = Color(0x80D6AA98))
-            .padding(horizontal = 8.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        OngoingBottomNavItem(label = "Home", icon = R.drawable.home_nav_home, textColor = InactiveIcon, onClick = onHomeClick)
-        OngoingBottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout_curr, textColor = LogWorkoutMuted, onClick = {})
-        OngoingBottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress, textColor = InactiveIcon, onClick = onProgressClick)
-        OngoingBottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = InactiveIcon, onClick = onProfileClick)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(BottomBarBg)
+                .border(width = 1.dp, color = Color(0x80D6AA98))
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            OngoingBottomNavItem(label = "Home", icon = R.drawable.home_nav_home, textColor = InactiveIcon, onClick = onHomeClick)
+            OngoingBottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout_curr, textColor = LogWorkoutMuted, onClick = {})
+            OngoingBottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress, textColor = InactiveIcon, onClick = onProgressClick)
+            OngoingBottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = InactiveIcon, onClick = onProfileClick)
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsBottomHeight(WindowInsets.navigationBars)
+                .background(
+                    color = BottomBarBg,
+                    shape = RoundedCornerShape(
+                        topStart = 0.dp,
+                        topEnd = 0.dp,
+                        bottomStart = StartWorkoutDimens.BottomInsetCorner,
+                        bottomEnd = StartWorkoutDimens.BottomInsetCorner
+                    )
+                )
+        )
     }
 }
 
@@ -1632,8 +1646,8 @@ private fun OngoingBottomNavItem(
         Text(
             text = label,
             color = textColor,
-            fontSize = 11.sp,
-            lineHeight = 12.sp
+            fontSize = StartWorkoutDimens.BottomNavTextSize,
+            lineHeight = StartWorkoutDimens.BottomNavLineHeight
         )
     }
 }
