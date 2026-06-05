@@ -32,6 +32,19 @@ private fun previewHomeUiState(): HomeUiState {
                 completedAtMillis = System.currentTimeMillis(),
                 weightKg = 82.4
             ),
+            creatineIntakeQuest = CreatineIntakeQuestState(
+                isAdded = true,
+                currentGramsToday = 5,
+                targetGrams = 10,
+                portionGrams = 5,
+                todayLogs = listOf(
+                    CreatineIntakeLog(
+                        id = 1,
+                        amountGrams = 5,
+                        timestampMillis = System.currentTimeMillis()
+                    )
+                )
+            ),
             dailyGoalSummary = DailyGoalSummaryState(
                 stepsCurrent = 4_850,
                 stepsTarget = 8_000,

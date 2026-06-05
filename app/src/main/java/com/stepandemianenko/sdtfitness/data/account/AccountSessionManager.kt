@@ -5,6 +5,7 @@ import com.stepandemianenko.sdtfitness.data.local.AccountDao
 import com.stepandemianenko.sdtfitness.data.local.AccountEntity
 import com.stepandemianenko.sdtfitness.data.local.AccountType
 import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordDao
+import com.stepandemianenko.sdtfitness.data.local.CreatineIntakeLogDao
 import com.stepandemianenko.sdtfitness.data.local.SessionExerciseDao
 import com.stepandemianenko.sdtfitness.data.local.SessionSetLogDao
 import com.stepandemianenko.sdtfitness.data.local.SyncState
@@ -50,6 +51,7 @@ class AccountSessionManager(
     private val accountDao: AccountDao = database.accountDao()
     private val userSettingsDao: UserSettingsDao = database.userSettingsDao()
     private val dailyQuestRecordDao: DailyQuestRecordDao = database.dailyQuestRecordDao()
+    private val creatineIntakeLogDao: CreatineIntakeLogDao = database.creatineIntakeLogDao()
     private val workoutPlanDao: WorkoutPlanDao = database.workoutPlanDao()
     private val sessionDao: WorkoutSessionDao = database.workoutSessionDao()
     private val sessionExerciseDao: SessionExerciseDao = database.sessionExerciseDao()
@@ -211,6 +213,7 @@ class AccountSessionManager(
             sessionExerciseDao.deleteAllForAccount(accountId)
             sessionDao.deleteAllForAccount(accountId)
             workoutPlanDao.deleteAllForAccount(accountId)
+            creatineIntakeLogDao.deleteAllForAccount(accountId)
             dailyQuestRecordDao.deleteAllForAccount(accountId)
             userSettingsDao.deleteForAccount(accountId)
             ensureUserSettings(accountId = accountId, now = now)

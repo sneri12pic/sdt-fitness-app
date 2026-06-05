@@ -37,6 +37,20 @@ class HomeModelsTest {
     }
 
     @Test
+    fun creatineProgress_returnsFractionOfTargetAndCapsAtComplete() {
+        assertEquals(
+            0.5f,
+            CreatineIntakeQuestState(currentGramsToday = 5, targetGrams = 10).progress,
+            0.001f
+        )
+        assertEquals(
+            1f,
+            CreatineIntakeQuestState(currentGramsToday = 15, targetGrams = 10).progress,
+            0.001f
+        )
+    }
+
+    @Test
     fun dailyGoalSummaryOverallProgress_averagesStepsWorkoutsAndActiveMinutes() {
         val summary = DailyGoalSummaryState(
             stepsCurrent = 2_500,

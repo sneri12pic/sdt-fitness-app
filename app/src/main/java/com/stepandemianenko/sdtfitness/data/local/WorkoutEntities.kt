@@ -1,6 +1,7 @@
 package com.stepandemianenko.sdtfitness.data.local
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -101,6 +102,9 @@ data class UserSettingsEntity(
     val healthConnectLastSyncedAt: Long? = null,
     val healthConnectLastImportedSteps: Int? = null,
     val healthConnectLatestWeightKg: Double? = null,
+    @ColumnInfo(defaultValue = "0") val creatineQuestEnabled: Boolean = false,
+    @ColumnInfo(defaultValue = "5") val creatineTargetGrams: Int = 5,
+    @ColumnInfo(defaultValue = "5") val creatinePortionGrams: Int = 5,
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,
@@ -147,6 +151,34 @@ data class DailyQuestRecordEntity(
     val completionSource: String? = null,
     val completedAt: Long? = null,
     val valueKg: Double? = null,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deletedAt: Long? = null,
+    val syncState: String = SyncState.LOCAL_ONLY
+)
+
+@Entity(
+    tableName = "creatine_intake_logs",
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["accountId", "date"]),
+        Index(value = ["accountId", "date", "timestamp"]),
+        Index(value = ["updatedAt"])
+    ]
+)
+data class CreatineIntakeLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val accountId: String,
+    val date: String,
+    val amountGrams: Int,
+    val timestamp: Long,
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,

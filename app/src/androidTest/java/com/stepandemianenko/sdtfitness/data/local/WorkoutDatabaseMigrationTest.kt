@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 class WorkoutDatabaseMigrationTest {
 
     @Test
-    fun migrateFrom1To7_backfillsAccountAndScopesData() {
+    fun migrateFrom1To8_backfillsAccountAndScopesData() {
         runBlocking {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val dbName = "workout-migration-test"
@@ -138,7 +138,8 @@ class WorkoutDatabaseMigrationTest {
                 WorkoutDatabase.MIGRATION_3_4,
                 WorkoutDatabase.MIGRATION_4_5,
                 WorkoutDatabase.MIGRATION_5_6,
-                WorkoutDatabase.MIGRATION_6_7
+                WorkoutDatabase.MIGRATION_6_7,
+                WorkoutDatabase.MIGRATION_7_8
             )
             .build()
 
@@ -164,6 +165,9 @@ class WorkoutDatabaseMigrationTest {
         assertEquals(null, migratedSettings?.healthConnectLastImportedSteps)
         assertEquals(null, migratedSettings?.healthConnectLatestWeightKg)
         assertEquals(null, migratedSettings?.healthConnectLastSyncedAt)
+        assertEquals(false, migratedSettings?.creatineQuestEnabled)
+        assertEquals(5, migratedSettings?.creatineTargetGrams)
+        assertEquals(5, migratedSettings?.creatinePortionGrams)
         assertEquals(120, db.exerciseCatalogDao().count())
 
         val now = System.currentTimeMillis()

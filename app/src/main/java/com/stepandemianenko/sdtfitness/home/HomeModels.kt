@@ -52,6 +52,27 @@ data class WeightInQuestState(
     val weightKg: Double? = null
 )
 
+data class CreatineIntakeLog(
+    val id: Long,
+    val amountGrams: Int,
+    val timestampMillis: Long
+)
+
+data class CreatineIntakeQuestState(
+    val isAdded: Boolean = false,
+    val currentGramsToday: Int = 0,
+    val targetGrams: Int = 5,
+    val portionGrams: Int = 5,
+    val todayLogs: List<CreatineIntakeLog> = emptyList()
+) {
+    val progress: Float
+        get() = if (targetGrams <= 0) {
+            0f
+        } else {
+            (currentGramsToday.toFloat() / targetGrams.toFloat()).coerceIn(0f, 1f)
+        }
+}
+
 data class DailyGoalSummaryState(
     val stepsCurrent: Int = 0,
     val stepsTarget: Int = 5_000,
@@ -75,6 +96,7 @@ data class DailyGoalSummaryState(
 data class HomeDashboardState(
     val dailyQuest: DailyQuestState = DailyQuestState(),
     val weightInQuest: WeightInQuestState = WeightInQuestState(),
+    val creatineIntakeQuest: CreatineIntakeQuestState = CreatineIntakeQuestState(),
     val dailyGoalSummary: DailyGoalSummaryState = DailyGoalSummaryState(),
     val routineStreakDates: Set<LocalDate> = emptySet(),
     val restDay: RestDayUiState = RestDayUiState(),
@@ -99,9 +121,16 @@ data class HomeUiState(
     val isDailyQuestEditorOpen: Boolean = false,
     val isAddCustomQuestDialogOpen: Boolean = false,
     val isWeightInChartDialogOpen: Boolean = false,
+    val isCreatineOverlayOpen: Boolean = false,
+    val isCreatineTargetEditorOpen: Boolean = false,
+    val isCreatinePortionEditorOpen: Boolean = false,
     val weightInChart: SetMetricChartUiModel = emptyHomeWeightChart(),
     val draftTargetSteps: String = "",
     val draftCurrentSteps: String = "",
+    val draftCreatineTargetGrams: String = "",
+    val creatineTargetError: String? = null,
+    val draftCreatinePortionGrams: String = "",
+    val creatinePortionError: String? = null,
     val activeAccountId: String? = null,
     val accounts: List<DebugAccountUiModel> = emptyList(),
     val pendingHealthConnectStepsToAdd: Int? = null

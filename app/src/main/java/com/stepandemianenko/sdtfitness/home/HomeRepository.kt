@@ -5,6 +5,8 @@ import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
 import com.stepandemianenko.sdtfitness.data.local.DailyQuestId
 import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordDao
 import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordEntity
+import com.stepandemianenko.sdtfitness.data.local.CreatineIntakeLogDao
+import com.stepandemianenko.sdtfitness.data.local.CreatineIntakeLogEntity
 import com.stepandemianenko.sdtfitness.data.local.SyncState
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsDao
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsEntity
@@ -26,6 +28,7 @@ class HomeRepository(
 ) {
     private val userSettingsDao: UserSettingsDao = database.userSettingsDao()
     private val dailyQuestRecordDao: DailyQuestRecordDao = database.dailyQuestRecordDao()
+    private val creatineIntakeLogDao: CreatineIntakeLogDao = database.creatineIntakeLogDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _dashboardState = MutableStateFlow(HomeDashboardState())
@@ -128,6 +131,66 @@ class HomeRepository(
                     completedAt = null
                 )
             }
+            publishUpdatedState(accountId = accountId)
+        }
+    }
+
+    fun addCreatineIntakeQuest() {
+        mutateSettings { current, _ ->
+            current.copy(creatineQuestEnabled = true)
+        }
+    }
+
+    fun addTodayCreatinePortion() {
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            val now = System.currentTimeMillis()
+            val todayKey = LocalDate.now().toString()
+            database.withTransaction {
+                val settings = userSettingsDao.getByAccountId(accountId)
+                    ?: defaultSettings(accountId = accountId, now = now)
+                val portionGrams = settings.creatinePortionGrams.coerceAtLeast(1)
+                creatineIntakeLogDao.insert(
+                    CreatineIntakeLogEntity(
+                        accountId = accountId,
+                        date = todayKey,
+                        amountGrams = portionGrams,
+                        timestamp = now,
+                        createdAt = now,
+                        updatedAt = now,
+                        syncState = SyncState.LOCAL_ONLY
+                    )
+                )
+            }
+            publishUpdatedState(accountId = accountId)
+        }
+    }
+
+    fun setCreatineTarget(targetGrams: Int) {
+        require(targetGrams > 0) { "Creatine target must be positive" }
+        mutateSettings { current, _ ->
+            current.copy(creatineTargetGrams = targetGrams)
+        }
+    }
+
+    fun setCreatinePortion(portionGrams: Int) {
+        require(portionGrams > 0) { "Creatine portion must be positive" }
+        mutateSettings { current, _ ->
+            current.copy(creatinePortionGrams = portionGrams)
+        }
+    }
+
+    fun deleteCreatinePortion(logId: Long) {
+        require(logId > 0) { "Creatine log ID must be positive" }
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            val now = System.currentTimeMillis()
+            creatineIntakeLogDao.markDeleted(
+                accountId = accountId,
+                logId = logId,
+                deletedAt = now,
+                syncState = SyncState.PENDING_DELETE
+            )
             publishUpdatedState(accountId = accountId)
         }
     }
@@ -260,7 +323,11 @@ class HomeRepository(
             }
         val todayKey = LocalDate.now().toString()
         val questRecords = dailyQuestRecordDao.getForDate(accountId = accountId, date = todayKey)
-        _dashboardState.value = settings.toDashboardState(questRecords = questRecords)
+        val creatineLogs = creatineIntakeLogDao.getForDate(accountId = accountId, date = todayKey)
+        _dashboardState.value = settings.toDashboardState(
+            questRecords = questRecords,
+            creatineLogs = creatineLogs
+        )
     }
 
     private fun defaultSettings(accountId: String, now: Long): UserSettingsEntity {
@@ -304,7 +371,8 @@ class HomeRepository(
     }
 
     private fun UserSettingsEntity.toDashboardState(
-        questRecords: List<DailyQuestRecordEntity>
+        questRecords: List<DailyQuestRecordEntity>,
+        creatineLogs: List<CreatineIntakeLogEntity>
     ): HomeDashboardState {
         val sourceType = runCatching {
             DailyStepsSourceType.valueOf(dailyStepsSource)
@@ -371,6 +439,21 @@ class HomeRepository(
                 completionSource = weightInSource,
                 completedAtMillis = weightInRecord?.completedAt,
                 weightKg = weightInRecord?.valueKg
+            ),
+            creatineIntakeQuest = CreatineIntakeQuestState(
+                isAdded = creatineQuestEnabled,
+                currentGramsToday = creatineLogs.sumOf { it.amountGrams.toLong() }
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt(),
+                targetGrams = creatineTargetGrams.coerceAtLeast(1),
+                portionGrams = creatinePortionGrams.coerceAtLeast(1),
+                todayLogs = creatineLogs.map { log ->
+                    CreatineIntakeLog(
+                        id = log.id,
+                        amountGrams = log.amountGrams.coerceAtLeast(0),
+                        timestampMillis = log.timestamp
+                    )
+                }
             ),
             dailyGoalSummary = DailyGoalSummaryState(
                 stepsCurrent = currentSteps,

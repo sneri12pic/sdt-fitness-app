@@ -10,6 +10,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,9 +21,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,9 +37,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
@@ -43,7 +55,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -57,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -68,13 +84,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.lifecycleScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.home.DailyGoalSummaryState
+import com.stepandemianenko.sdtfitness.home.CreatineIntakeQuestState
 import com.stepandemianenko.sdtfitness.home.DailyQuestState
 import com.stepandemianenko.sdtfitness.home.DailyQuestCompletionSource
 import com.stepandemianenko.sdtfitness.home.DebugAccountUiModel
@@ -88,10 +108,13 @@ import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import com.stepandemianenko.sdtfitness.quicklog.QuickLogRoute
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.roundToInt
 //import com.example.fitnessapp.ExerciseActivity
 //import com.example.fitnessapp.ProfileActivity
 
@@ -161,6 +184,9 @@ private val HomeHorizontalPadding = 20.dp
 private val HomeTopPadding = 30.dp
 private val HomeBottomInsetCorner = 16.dp
 private val CalendarMonthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH)
+private val QuestLogTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
+private val CreatineDeleteRevealWidth = 72.dp
+private val CreatinePortionRowShape = RoundedCornerShape(12.dp)
 
 private enum class HomeScreen {
     Dashboard,
@@ -189,6 +215,19 @@ fun HomeRoute(
         onDismissAddCustomQuestDialog = { viewModel.onEvent(HomeUiEvent.DismissAddCustomQuestDialog) },
         onAddWeightInQuest = { viewModel.onEvent(HomeUiEvent.AddWeightInQuest) },
         onToggleWeightInQuestCompletion = { viewModel.onEvent(HomeUiEvent.ToggleWeightInQuestCompletion) },
+        onAddCreatineIntakeQuest = { viewModel.onEvent(HomeUiEvent.AddCreatineIntakeQuest) },
+        onOpenCreatineOverlay = { viewModel.onEvent(HomeUiEvent.OpenCreatineOverlay) },
+        onDismissCreatineOverlay = { viewModel.onEvent(HomeUiEvent.DismissCreatineOverlay) },
+        onAddCreatinePortion = { viewModel.onEvent(HomeUiEvent.AddCreatinePortion) },
+        onOpenCreatineTargetEditor = { viewModel.onEvent(HomeUiEvent.OpenCreatineTargetEditor) },
+        onDismissCreatineTargetEditor = { viewModel.onEvent(HomeUiEvent.DismissCreatineTargetEditor) },
+        onCreatineTargetInputChanged = { viewModel.onEvent(HomeUiEvent.CreatineTargetInputChanged(it)) },
+        onSaveCreatineTarget = { viewModel.onEvent(HomeUiEvent.SaveCreatineTarget) },
+        onOpenCreatinePortionEditor = { viewModel.onEvent(HomeUiEvent.OpenCreatinePortionEditor) },
+        onDismissCreatinePortionEditor = { viewModel.onEvent(HomeUiEvent.DismissCreatinePortionEditor) },
+        onCreatinePortionInputChanged = { viewModel.onEvent(HomeUiEvent.CreatinePortionInputChanged(it)) },
+        onSaveCreatinePortion = { viewModel.onEvent(HomeUiEvent.SaveCreatinePortion) },
+        onDeleteCreatinePortion = { logId -> viewModel.onEvent(HomeUiEvent.DeleteCreatinePortion(logId)) },
         onOpenWeightInChartDialog = { viewModel.onEvent(HomeUiEvent.OpenWeightInChartDialog) },
         onDismissWeightInChartDialog = { viewModel.onEvent(HomeUiEvent.DismissWeightInChartDialog) },
         onSaveRecoveryOption = { viewModel.onEvent(HomeUiEvent.SaveRecoveryOption(it)) },
@@ -219,6 +258,19 @@ fun HomeOneScreen(
     onDismissAddCustomQuestDialog: () -> Unit = {},
     onAddWeightInQuest: () -> Unit = {},
     onToggleWeightInQuestCompletion: () -> Unit = {},
+    onAddCreatineIntakeQuest: () -> Unit = {},
+    onOpenCreatineOverlay: () -> Unit = {},
+    onDismissCreatineOverlay: () -> Unit = {},
+    onAddCreatinePortion: () -> Unit = {},
+    onOpenCreatineTargetEditor: () -> Unit = {},
+    onDismissCreatineTargetEditor: () -> Unit = {},
+    onCreatineTargetInputChanged: (String) -> Unit = {},
+    onSaveCreatineTarget: () -> Unit = {},
+    onOpenCreatinePortionEditor: () -> Unit = {},
+    onDismissCreatinePortionEditor: () -> Unit = {},
+    onCreatinePortionInputChanged: (String) -> Unit = {},
+    onSaveCreatinePortion: () -> Unit = {},
+    onDeleteCreatinePortion: (Long) -> Unit = {},
     onOpenWeightInChartDialog: () -> Unit = {},
     onDismissWeightInChartDialog: () -> Unit = {},
     onSaveRecoveryOption: (RecoveryOption) -> Unit = {},
@@ -283,6 +335,8 @@ fun HomeOneScreen(
                                 onOpenDailyQuestEditor = onOpenDailyQuestEditor,
                                 onOpenAddCustomQuestDialog = onOpenAddCustomQuestDialog,
                                 onToggleWeightInQuestCompletion = onToggleWeightInQuestCompletion,
+                                onOpenCreatineOverlay = onOpenCreatineOverlay,
+                                onAddCreatinePortion = onAddCreatinePortion,
                                 onOpenWeightInChartDialog = onOpenWeightInChartDialog,
                                 onPreviousRoutineMonth = onPreviousRoutineMonth,
                                 onNextRoutineMonth = onNextRoutineMonth,
@@ -365,8 +419,45 @@ fun HomeOneScreen(
             if (uiState.isAddCustomQuestDialogOpen) {
                 AddCustomQuestDialog(
                     isWeightInAdded = uiState.dashboard.weightInQuest.isAdded,
+                    isCreatineIntakeAdded = uiState.dashboard.creatineIntakeQuest.isAdded,
                     onAddWeightInQuest = onAddWeightInQuest,
+                    onAddCreatineIntakeQuest = onAddCreatineIntakeQuest,
                     onDismiss = onDismissAddCustomQuestDialog
+                )
+            }
+
+            if (uiState.isCreatineOverlayOpen) {
+                CreatineIntakeOverlay(
+                    questState = uiState.dashboard.creatineIntakeQuest,
+                    onAddPortion = onAddCreatinePortion,
+                    onSetTarget = onOpenCreatineTargetEditor,
+                    onSetPortion = onOpenCreatinePortionEditor,
+                    onDeletePortion = onDeleteCreatinePortion,
+                    onDismiss = onDismissCreatineOverlay
+                )
+            }
+
+            if (uiState.isCreatineTargetEditorOpen) {
+                CreatineValueDialog(
+                    title = "Set Creatine Target",
+                    fieldLabel = "Target grams",
+                    targetValue = uiState.draftCreatineTargetGrams,
+                    errorMessage = uiState.creatineTargetError,
+                    onTargetChanged = onCreatineTargetInputChanged,
+                    onDismiss = onDismissCreatineTargetEditor,
+                    onSave = onSaveCreatineTarget
+                )
+            }
+
+            if (uiState.isCreatinePortionEditorOpen) {
+                CreatineValueDialog(
+                    title = "Set Creatine Portion",
+                    fieldLabel = "Portion grams",
+                    targetValue = uiState.draftCreatinePortionGrams,
+                    errorMessage = uiState.creatinePortionError,
+                    onTargetChanged = onCreatinePortionInputChanged,
+                    onDismiss = onDismissCreatinePortionEditor,
+                    onSave = onSaveCreatinePortion
                 )
             }
 
@@ -420,6 +511,8 @@ private fun DashboardContent(
     onOpenDailyQuestEditor: () -> Unit,
     onOpenAddCustomQuestDialog: () -> Unit,
     onToggleWeightInQuestCompletion: () -> Unit,
+    onOpenCreatineOverlay: () -> Unit,
+    onAddCreatinePortion: () -> Unit,
     onOpenWeightInChartDialog: () -> Unit,
     onPreviousRoutineMonth: () -> Unit,
     onNextRoutineMonth: () -> Unit,
@@ -473,6 +566,13 @@ private fun DashboardContent(
             questState = uiState.dashboard.weightInQuest,
             onClick = onOpenWeightInChartDialog,
             onToggleDoneClick = onToggleWeightInQuestCompletion
+        )
+    }
+    if (uiState.dashboard.creatineIntakeQuest.isAdded) {
+        CreatineIntakeQuestCard(
+            questState = uiState.dashboard.creatineIntakeQuest,
+            onClick = onOpenCreatineOverlay,
+            onAddPortion = onAddCreatinePortion
         )
     }
     AddTile(onClick = onOpenAddCustomQuestDialog)
@@ -1217,7 +1317,9 @@ private fun DailyQuestEditorDialog(
 @Composable
 private fun AddCustomQuestDialog(
     isWeightInAdded: Boolean,
+    isCreatineIntakeAdded: Boolean,
     onAddWeightInQuest: () -> Unit,
+    onAddCreatineIntakeQuest: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -1234,8 +1336,18 @@ private fun AddCustomQuestDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 DialogSectionLabel(text = "Suggested Quests")
                 SuggestedQuestRow(
+                    title = "Weight-In",
+                    subtitle = "Weigh yourself today",
                     isAdded = isWeightInAdded,
-                    onAddClick = onAddWeightInQuest
+                    onAddClick = onAddWeightInQuest,
+                    icon = { CircleIconContainer(iconRes = R.drawable.orange_scales) }
+                )
+                SuggestedQuestRow(
+                    title = "Creatine Intake",
+                    subtitle = "Track today's creatine portions",
+                    isAdded = isCreatineIntakeAdded,
+                    onAddClick = onAddCreatineIntakeQuest,
+                    icon = { CreatineIconContainer() }
                 )
                 DialogSectionLabel(text = "Custom Quests")
                 Text(
@@ -1289,6 +1401,312 @@ private fun WeightInChartDialog(
 }
 
 @Composable
+private fun CreatineIntakeOverlay(
+    questState: CreatineIntakeQuestState,
+    onAddPortion: () -> Unit,
+    onSetTarget: () -> Unit,
+    onSetPortion: () -> Unit,
+    onDeletePortion: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var isMenuExpanded by remember { mutableStateOf(false) }
+    var openLogId by remember { mutableStateOf<Long?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBackground,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Creatine Intake",
+                    color = PrimaryText,
+                    fontWeight = FontWeight.Bold
+                )
+                Box {
+                    IconButton(onClick = { isMenuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "Creatine intake settings",
+                            tint = PrimaryText
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = isMenuExpanded,
+                        onDismissRequest = { isMenuExpanded = false },
+                        containerColor = CardBackground
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Set target", color = PrimaryText) },
+                            onClick = {
+                                isMenuExpanded = false
+                                onSetTarget()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Set portion", color = PrimaryText) },
+                            onClick = {
+                                isMenuExpanded = false
+                                onSetPortion()
+                            }
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFFFFEFE5))
+                        .padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CreatineIconContainer()
+                    Text(
+                        text = "${questState.currentGramsToday}g / ${questState.targetGrams}g",
+                        color = PrimaryText,
+                        fontSize = 28.sp,
+                        lineHeight = 30.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(ProgressTrack)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(questState.progress)
+                                .height(10.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(ActionColor)
+                        )
+                    }
+                    Text(
+                        text = "Daily target: ${questState.targetGrams} g",
+                        color = SecondaryText,
+                        fontSize = 13.sp,
+                        lineHeight = 15.sp
+                    )
+                    Button(
+                        onClick = onAddPortion,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ActionColor,
+                            contentColor = Color(0xFFFCE8DA)
+                        ),
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text(
+                            text = "+ ${questState.portionGrams}g",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                DialogSectionLabel(text = "Today's portions")
+                if (questState.todayLogs.isEmpty()) {
+                    Text(
+                        text = "No portions logged yet.",
+                        color = SecondaryText,
+                        fontSize = 14.sp
+                    )
+                } else {
+                    questState.todayLogs.forEach { log ->
+                        key(log.id) {
+                            SwipeToRevealCreatinePortionRow(
+                                amountGrams = log.amountGrams,
+                                timestampMillis = log.timestampMillis,
+                                isOpen = openLogId == log.id,
+                                onDragStarted = { openLogId = log.id },
+                                onOpenChanged = { isOpen ->
+                                    openLogId = if (isOpen) {
+                                        log.id
+                                    } else {
+                                        openLogId.takeUnless { it == log.id }
+                                    }
+                                },
+                                onDelete = {
+                                    openLogId = null
+                                    onDeletePortion(log.id)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Close",
+                    color = PrimaryText,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun SwipeToRevealCreatinePortionRow(
+    amountGrams: Int,
+    timestampMillis: Long,
+    isOpen: Boolean,
+    onDragStarted: () -> Unit,
+    onOpenChanged: (Boolean) -> Unit,
+    onDelete: () -> Unit
+) {
+    val revealWidthPx = with(LocalDensity.current) { CreatineDeleteRevealWidth.toPx() }
+    var dragOffsetPx by remember { mutableFloatStateOf(if (isOpen) -revealWidthPx else 0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    val targetOffsetPx = if (isOpen) -revealWidthPx else 0f
+    val animatedOffsetPx by animateFloatAsState(
+        targetValue = targetOffsetPx,
+        animationSpec = tween(durationMillis = 180),
+        label = "creatinePortionReveal"
+    )
+
+    LaunchedEffect(isOpen, revealWidthPx) {
+        if (!isDragging) {
+            dragOffsetPx = targetOffsetPx
+        }
+    }
+
+    val displayedOffsetPx = if (isDragging) dragOffsetPx else animatedOffsetPx
+    val draggableState = rememberDraggableState { delta ->
+        dragOffsetPx = (dragOffsetPx + delta).coerceIn(-revealWidthPx, 0f)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(CreatinePortionRowShape)
+            .background(Color(0xFFFFD6C8))
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(CreatineDeleteRevealWidth)
+                .clickable(onClick = onDelete),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.start_workout_icon_bin),
+                contentDescription = "Delete creatine portion",
+                modifier = Modifier.size(24.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(displayedOffsetPx.roundToInt(), 0) }
+                .background(Color(0xFFFFEFE5))
+                .draggable(
+                    state = draggableState,
+                    orientation = Orientation.Horizontal,
+                    onDragStarted = {
+                        isDragging = true
+                        dragOffsetPx = displayedOffsetPx
+                        onDragStarted()
+                    },
+                    onDragStopped = {
+                        isDragging = false
+                        val shouldOpen = dragOffsetPx <= -revealWidthPx / 2f
+                        onOpenChanged(shouldOpen)
+                    }
+                )
+                .padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "+$amountGrams g",
+                color = PrimaryText,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = formatQuestLogTime(timestampMillis),
+                color = SecondaryText,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun CreatineValueDialog(
+    title: String,
+    fieldLabel: String,
+    targetValue: String,
+    errorMessage: String?,
+    onTargetChanged: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBackground,
+        title = {
+            Text(
+                text = title,
+                color = PrimaryText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = targetValue,
+                onValueChange = onTargetChanged,
+                label = { Text(fieldLabel) },
+                suffix = { Text("g") },
+                singleLine = true,
+                isError = errorMessage != null,
+                supportingText = errorMessage?.let { message ->
+                    { Text(message) }
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onSave) {
+                Text("Save", color = PrimaryText)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = SecondaryText)
+            }
+        }
+    )
+}
+
+private fun formatQuestLogTime(timestampMillis: Long): String {
+    return Instant.ofEpochMilli(timestampMillis)
+        .atZone(ZoneId.systemDefault())
+        .format(QuestLogTimeFormatter)
+}
+
+@Composable
 private fun DialogSectionLabel(text: String) {
     Text(
         text = text,
@@ -1301,8 +1719,11 @@ private fun DialogSectionLabel(text: String) {
 
 @Composable
 private fun SuggestedQuestRow(
+    title: String,
+    subtitle: String,
     isAdded: Boolean,
-    onAddClick: () -> Unit
+    onAddClick: () -> Unit,
+    icon: @Composable () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -1312,18 +1733,18 @@ private fun SuggestedQuestRow(
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CircleIconContainer(iconRes = R.drawable.orange_scales)
+        icon()
         Spacer(modifier = Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Weight-In",
+                text = title,
                 color = PrimaryText,
                 fontSize = 17.sp,
                 lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "Weigh yourself today",
+                text = subtitle,
                 color = SecondaryText,
                 fontSize = 13.sp,
                 lineHeight = 15.sp
@@ -1353,6 +1774,68 @@ private fun SuggestedQuestRow(
                     fontWeight = FontWeight.SemiBold
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CreatineIconContainer() {
+    Box(
+        modifier = Modifier
+            .size(50.dp)
+            .clip(CircleShape)
+            .background(Color(0xBBF88863)),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.measuring_cup),
+            contentDescription = null,
+            modifier = Modifier.size(36.dp),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@Composable
+private fun CreatineIntakeQuestCard(
+    questState: CreatineIntakeQuestState,
+    onClick: () -> Unit,
+    onAddPortion: () -> Unit
+) {
+    HomeCard(
+        modifier = Modifier.clickable(onClick = onClick),
+        horizontalPadding = 10.dp,
+        verticalPadding = 10.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CreatineIconContainer()
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Creatine Intake",
+                    color = PrimaryText,
+                    fontSize = 18.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "${questState.currentGramsToday}g / ${questState.targetGrams}g today",
+                    color = SecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            QuestStatusPill(
+                text = "+ ${questState.portionGrams}g",
+                backgroundColor = if (questState.progress >= 1f) SoftGreen else ActionColor,
+                textColor = if (questState.progress >= 1f) PrimaryText else Color(0xFFFCE8DA),
+                onClick = onAddPortion
+            )
         }
     }
 }

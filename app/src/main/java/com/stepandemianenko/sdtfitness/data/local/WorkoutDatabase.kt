@@ -13,13 +13,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserSettingsEntity::class,
         ExerciseCatalogEntity::class,
         DailyQuestRecordEntity::class,
+        CreatineIntakeLogEntity::class,
         WorkoutPlanEntity::class,
         WorkoutPlanExerciseEntity::class,
         WorkoutSessionEntity::class,
         SessionExerciseEntity::class,
         SessionSetLogEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class WorkoutDatabase : RoomDatabase() {
@@ -27,6 +28,7 @@ abstract class WorkoutDatabase : RoomDatabase() {
     abstract fun userSettingsDao(): UserSettingsDao
     abstract fun exerciseCatalogDao(): ExerciseCatalogDao
     abstract fun dailyQuestRecordDao(): DailyQuestRecordDao
+    abstract fun creatineIntakeLogDao(): CreatineIntakeLogDao
     abstract fun workoutPlanDao(): WorkoutPlanDao
     abstract fun workoutSessionDao(): WorkoutSessionDao
     abstract fun sessionExerciseDao(): SessionExerciseDao
@@ -407,6 +409,33 @@ abstract class WorkoutDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `creatineQuestEnabled` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `creatineTargetGrams` INTEGER NOT NULL DEFAULT 5")
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `creatinePortionGrams` INTEGER NOT NULL DEFAULT 5")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `creatine_intake_logs` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `accountId` TEXT NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `amountGrams` INTEGER NOT NULL,
+                        `timestamp` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncState` TEXT NOT NULL,
+                        FOREIGN KEY(`accountId`) REFERENCES `accounts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_creatine_intake_logs_accountId_date` ON `creatine_intake_logs` (`accountId`, `date`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_creatine_intake_logs_accountId_date_timestamp` ON `creatine_intake_logs` (`accountId`, `date`, `timestamp`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_creatine_intake_logs_updatedAt` ON `creatine_intake_logs` (`updatedAt`)")
+            }
+        }
+
         fun getInstance(context: Context): WorkoutDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -420,7 +449,8 @@ abstract class WorkoutDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .build()
                     .also { INSTANCE = it }

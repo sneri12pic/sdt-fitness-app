@@ -20,6 +20,19 @@ sealed interface HomeUiEvent {
     data object DismissAddCustomQuestDialog : HomeUiEvent
     data object AddWeightInQuest : HomeUiEvent
     data object ToggleWeightInQuestCompletion : HomeUiEvent
+    data object AddCreatineIntakeQuest : HomeUiEvent
+    data object OpenCreatineOverlay : HomeUiEvent
+    data object DismissCreatineOverlay : HomeUiEvent
+    data object AddCreatinePortion : HomeUiEvent
+    data object OpenCreatineTargetEditor : HomeUiEvent
+    data object DismissCreatineTargetEditor : HomeUiEvent
+    data class CreatineTargetInputChanged(val value: String) : HomeUiEvent
+    data object SaveCreatineTarget : HomeUiEvent
+    data object OpenCreatinePortionEditor : HomeUiEvent
+    data object DismissCreatinePortionEditor : HomeUiEvent
+    data class CreatinePortionInputChanged(val value: String) : HomeUiEvent
+    data object SaveCreatinePortion : HomeUiEvent
+    data class DeleteCreatinePortion(val logId: Long) : HomeUiEvent
     data object OpenWeightInChartDialog : HomeUiEvent
     data object DismissWeightInChartDialog : HomeUiEvent
     data class DailyQuestTargetInputChanged(val value: String) : HomeUiEvent
@@ -106,6 +119,95 @@ class HomeViewModel(
             HomeUiEvent.ToggleWeightInQuestCompletion -> {
                 val currentCompleted = _uiState.value.dashboard.weightInQuest.isCompleted
                 repository.setTodayWeightInCompleted(completed = !currentCompleted)
+            }
+
+            HomeUiEvent.AddCreatineIntakeQuest -> {
+                repository.addCreatineIntakeQuest()
+                _uiState.update { it.copy(isAddCustomQuestDialogOpen = false) }
+            }
+
+            HomeUiEvent.OpenCreatineOverlay -> {
+                _uiState.update { it.copy(isCreatineOverlayOpen = true) }
+            }
+
+            HomeUiEvent.DismissCreatineOverlay -> {
+                _uiState.update {
+                    it.copy(
+                        isCreatineOverlayOpen = false,
+                        isCreatineTargetEditorOpen = false,
+                        isCreatinePortionEditorOpen = false,
+                        creatineTargetError = null,
+                        creatinePortionError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.AddCreatinePortion -> repository.addTodayCreatinePortion()
+
+            HomeUiEvent.OpenCreatineTargetEditor -> {
+                val target = _uiState.value.dashboard.creatineIntakeQuest.targetGrams
+                _uiState.update {
+                    it.copy(
+                        isCreatineTargetEditorOpen = true,
+                        draftCreatineTargetGrams = target.toString(),
+                        creatineTargetError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.DismissCreatineTargetEditor -> {
+                _uiState.update {
+                    it.copy(
+                        isCreatineTargetEditorOpen = false,
+                        creatineTargetError = null
+                    )
+                }
+            }
+
+            is HomeUiEvent.CreatineTargetInputChanged -> {
+                _uiState.update {
+                    it.copy(
+                        draftCreatineTargetGrams = sanitizeNumericInput(event.value),
+                        creatineTargetError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.SaveCreatineTarget -> saveCreatineTarget()
+
+            HomeUiEvent.OpenCreatinePortionEditor -> {
+                val portion = _uiState.value.dashboard.creatineIntakeQuest.portionGrams
+                _uiState.update {
+                    it.copy(
+                        isCreatinePortionEditorOpen = true,
+                        draftCreatinePortionGrams = portion.toString(),
+                        creatinePortionError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.DismissCreatinePortionEditor -> {
+                _uiState.update {
+                    it.copy(
+                        isCreatinePortionEditorOpen = false,
+                        creatinePortionError = null
+                    )
+                }
+            }
+
+            is HomeUiEvent.CreatinePortionInputChanged -> {
+                _uiState.update {
+                    it.copy(
+                        draftCreatinePortionGrams = sanitizeNumericInput(event.value),
+                        creatinePortionError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.SaveCreatinePortion -> saveCreatinePortion()
+
+            is HomeUiEvent.DeleteCreatinePortion -> {
+                repository.deleteCreatinePortion(logId = event.logId)
             }
 
             HomeUiEvent.OpenWeightInChartDialog -> openWeightInChartDialog()
@@ -199,6 +301,38 @@ class HomeViewModel(
         )
 
         _uiState.update { it.copy(isDailyQuestEditorOpen = false) }
+    }
+
+    private fun saveCreatineTarget() {
+        val target = _uiState.value.draftCreatineTargetGrams.toIntOrNull()
+        if (target == null || target <= 0) {
+            _uiState.update { it.copy(creatineTargetError = "Enter a target greater than 0 g") }
+            return
+        }
+
+        repository.setCreatineTarget(targetGrams = target)
+        _uiState.update {
+            it.copy(
+                isCreatineTargetEditorOpen = false,
+                creatineTargetError = null
+            )
+        }
+    }
+
+    private fun saveCreatinePortion() {
+        val portion = _uiState.value.draftCreatinePortionGrams.toIntOrNull()
+        if (portion == null || portion <= 0) {
+            _uiState.update { it.copy(creatinePortionError = "Enter a portion greater than 0 g") }
+            return
+        }
+
+        repository.setCreatinePortion(portionGrams = portion)
+        _uiState.update {
+            it.copy(
+                isCreatinePortionEditorOpen = false,
+                creatinePortionError = null
+            )
+        }
     }
 
     private fun saveRecoveryOption(option: RecoveryOption) {
