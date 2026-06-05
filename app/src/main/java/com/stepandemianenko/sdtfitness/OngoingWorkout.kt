@@ -45,7 +45,7 @@ class OngoingWorkout : ComponentActivity() {
                         finish()
                     },
                     onHomeClick = {
-                        openProgressWithoutAnimation()
+                        openHomeWithoutAnimation()
                     },
                     onProgressClick = {
                         openProgressWithoutAnimation()
@@ -58,8 +58,13 @@ class OngoingWorkout : ComponentActivity() {
         }
     }
 
-    private fun openProgressWithoutAnimation() {
+    private fun openHomeWithoutAnimation() {
         startActivity(Intent(this, Home::class.java))
+        overridePendingTransition(0, 0)
+    }
+
+    private fun openProgressWithoutAnimation() {
+        startActivity(Intent(this, Progress::class.java))
         overridePendingTransition(0, 0)
     }
 
