@@ -45,30 +45,39 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -76,14 +85,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.R
 import com.stepandemianenko.sdtfitness.noRippleClickable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private object LogWorkoutDimens {
     val HorizontalPadding = StartWorkoutDimens.HorizontalPadding
@@ -113,9 +125,12 @@ private val LogWorkoutDivider = Color(0xFFE2B7A5)
 private val LogWorkoutSuccess = Color(0xFF70C97D)
 private val LogWorkoutSuccessSoft = Color(0xFFDDEED8)
 private val LogWorkoutMuted = Color(0xFFC48778)
-private val LogWorkoutDeleteBackground = Color(0xFFD85C4A)
+private val LogWorkoutSwipeRevealBackground = Color(0xFFFFD6C8)
+private val LogWorkoutSwipeRevealWidth = 72.dp
+private val LogWorkoutSwipeRevealShape = RoundedCornerShape(12.dp)
 private val BottomBarBg = Color(0xFFF7E6DC)
 private val InactiveIcon = Color(0xFFC48778)
+private const val DeletionSnackbarAutoDismissMillis = 5000L
 private const val RestTimerPageIndex = 0
 private const val WorkoutPageIndex = 1
 
@@ -153,10 +168,20 @@ fun OngoingWorkoutRoute(
                 LogWorkoutEffect.OpenRestTimer -> pagerState.animateScrollToPage(RestTimerPageIndex)
                 is LogWorkoutEffect.ShowSnackbar -> {
                     launch {
+                        val timeoutJob = if (effect.actionLabel != null) {
+                            launch {
+                                delay(DeletionSnackbarAutoDismissMillis)
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                            }
+                        } else {
+                            null
+                        }
                         val snackbarResult = snackbarHostState.showSnackbar(
                             message = effect.message,
-                            actionLabel = effect.actionLabel
+                            actionLabel = effect.actionLabel,
+                            duration = SnackbarDuration.Indefinite
                         )
+                        timeoutJob?.cancel()
                         val actionPerformed = snackbarResult == SnackbarResult.ActionPerformed
                         if (
                             effect.actionLabel != null &&
@@ -335,13 +360,23 @@ fun LogWorkoutScreen(
 ) {
     BackHandler(enabled = enableBackHandler, onBack = onBackClick)
 
+    var openExerciseId by remember { mutableStateOf<Long?>(null) }
+
     val session = uiState.session
     Scaffold(
         modifier = modifier,
         containerColor = LogWorkoutBackground,
         contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState)
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    shape = RoundedCornerShape(12.dp),
+                    containerColor = LogWorkoutText,
+                    contentColor = LogWorkoutCardBackground,
+                    actionColor = LogWorkoutPrimary
+                )
+            }
         },
         topBar = {
             if (!uiState.isLoading && session != null) {
@@ -422,6 +457,15 @@ fun LogWorkoutScreen(
                 ExerciseLogCard(
                     exercise = exercise,
                     rpeOptions = defaultLogWorkoutRpeOptions(),
+                    isHeaderOpen = openExerciseId == exercise.id,
+                    onHeaderDragStarted = { openExerciseId = exercise.id },
+                    onHeaderOpenChanged = { isOpen ->
+                        openExerciseId = if (isOpen) {
+                            exercise.id
+                        } else {
+                            openExerciseId.takeUnless { it == exercise.id }
+                        }
+                    },
                     onUpdateSetWeight = { setId, weight ->
                         onUpdateSetWeight(exercise.id, setId, weight)
                     },
@@ -873,7 +917,7 @@ private fun RestTimerActionButton(
     onClick: () -> Unit
 ) {
     Surface(
-        color = LogWorkoutSubtleBackground,
+        color = LogWorkoutPrimary,
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier
             .sizeIn(minHeight = 44.dp)
@@ -882,7 +926,7 @@ private fun RestTimerActionButton(
     ) {
         Text(
             text = label,
-            color = LogWorkoutText,
+            color = Color.White,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
@@ -956,6 +1000,9 @@ private fun SessionMetricCell(
 fun ExerciseLogCard(
     exercise: ExerciseUiModel,
     rpeOptions: List<LogWorkoutRpeOptionUiModel>,
+    isHeaderOpen: Boolean,
+    onHeaderDragStarted: () -> Unit,
+    onHeaderOpenChanged: (Boolean) -> Unit,
     onUpdateSetWeight: (String, String) -> Unit,
     onUpdateSetReps: (String, String) -> Unit,
     onToggleSetCompleted: (WorkoutSetUiModel) -> Unit,
@@ -966,6 +1013,8 @@ fun ExerciseLogCard(
     onAddSet: () -> Unit,
     onToggleRestTimer: () -> Unit
 ) {
+    var openSetId by remember(exercise.id) { mutableStateOf<String?>(null) }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = LogWorkoutCardBackground,
@@ -977,9 +1026,15 @@ fun ExerciseLogCard(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            SwipeToDeleteContainer(
+            SwipeToRevealRow(
                 rowKey = "exercise_header_${exercise.id}",
-                onDelete = onDeleteExercise,
+                isOpen = isHeaderOpen,
+                onDragStarted = onHeaderDragStarted,
+                onOpenChanged = onHeaderOpenChanged,
+                onDelete = {
+                    onHeaderOpenChanged(false)
+                    onDeleteExercise()
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -1050,7 +1105,7 @@ fun ExerciseLogCard(
             }
 
             Surface(
-                color = LogWorkoutSubtleBackground,
+                color = LogWorkoutCardBackground,
                 shape = RoundedCornerShape(LogWorkoutDimens.InnerCardCorner)
             ) {
                 if (exercise.sets.isEmpty()) {
@@ -1075,6 +1130,15 @@ fun ExerciseLogCard(
                             }
                             WorkoutSetRow(
                                 set = set,
+                                isOpen = openSetId == set.id,
+                                onDragStarted = { openSetId = set.id },
+                                onOpenChanged = { isOpen ->
+                                    openSetId = if (isOpen) {
+                                        set.id
+                                    } else {
+                                        openSetId.takeUnless { it == set.id }
+                                    }
+                                },
                                 onWeightChanged = { onUpdateSetWeight(set.id, it) },
                                 onRepsChanged = { onUpdateSetReps(set.id, it) },
                                 onToggleCompleted = { onToggleSetCompleted(set) },
@@ -1142,62 +1206,81 @@ private fun SetCellText(
         modifier = modifier
     )
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SwipeToDeleteContainer(
+private fun SwipeToRevealRow(
     rowKey: String,
+    isOpen: Boolean,
+    onDragStarted: () -> Unit,
+    onOpenChanged: (Boolean) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     key(rowKey) {
-        val dismissState = rememberSwipeToDismissBoxState(
-            positionalThreshold = { fullWidth -> fullWidth * 0.35f },
-            confirmValueChange = { targetValue ->
-                if (targetValue == SwipeToDismissBoxValue.EndToStart) {
-                    onDelete()
-                    false
-                } else {
-                    false
-                }
-            }
+        val revealWidthPx = with(LocalDensity.current) { LogWorkoutSwipeRevealWidth.toPx() }
+        var dragOffsetPx by remember { mutableFloatStateOf(if (isOpen) -revealWidthPx else 0f) }
+        var isDragging by remember { mutableStateOf(false) }
+        val targetOffsetPx = if (isOpen) -revealWidthPx else 0f
+        val animatedOffsetPx by animateFloatAsState(
+            targetValue = targetOffsetPx,
+            animationSpec = tween(durationMillis = 180),
+            label = "logWorkoutSwipeReveal"
         )
 
-        SwipeToDismissBox(
-            state = dismissState,
-            enableDismissFromStartToEnd = false,
-            enableDismissFromEndToStart = true,
-            modifier = modifier,
-            backgroundContent = {
-                val isDeleteDirection =
-                    dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    if (isDeleteDirection) {
-                        Box(
-                            modifier = Modifier
-                                .size(width = 56.dp, height = 42.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(LogWorkoutDeleteBackground),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.start_workout_icon_bin),
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
+        LaunchedEffect(isOpen, revealWidthPx) {
+            if (!isDragging) {
+                dragOffsetPx = targetOffsetPx
             }
+        }
+
+        val displayedOffsetPx = if (isDragging) dragOffsetPx else animatedOffsetPx
+        val draggableState = rememberDraggableState { delta ->
+            dragOffsetPx = (dragOffsetPx + delta).coerceIn(-revealWidthPx, 0f)
+        }
+
+        Box(
+            modifier = modifier
+                .clip(LogWorkoutSwipeRevealShape)
+                .background(LogWorkoutSwipeRevealBackground)
         ) {
-            content()
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(LogWorkoutSwipeRevealWidth)
+                    .clickable(onClick = onDelete),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.start_workout_icon_bin),
+                    contentDescription = "Delete",
+                    modifier = Modifier.size(24.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(displayedOffsetPx.roundToInt(), 0) }
+                    .background(LogWorkoutCardBackground)
+                    .draggable(
+                        state = draggableState,
+                        orientation = Orientation.Horizontal,
+                        onDragStarted = {
+                            isDragging = true
+                            dragOffsetPx = displayedOffsetPx
+                            onDragStarted()
+                        },
+                        onDragStopped = {
+                            isDragging = false
+                            val shouldOpen = dragOffsetPx <= -revealWidthPx / 2f
+                            onOpenChanged(shouldOpen)
+                        }
+                    )
+            ) {
+                content()
+            }
         }
     }
 }
@@ -1205,14 +1288,23 @@ private fun SwipeToDeleteContainer(
 @Composable
 fun WorkoutSetRow(
     set: WorkoutSetUiModel,
+    isOpen: Boolean,
+    onDragStarted: () -> Unit,
+    onOpenChanged: (Boolean) -> Unit,
     onWeightChanged: (String) -> Unit,
     onRepsChanged: (String) -> Unit,
     onToggleCompleted: () -> Unit,
     onDelete: () -> Unit
 ) {
-    SwipeToDeleteContainer(
+    SwipeToRevealRow(
         rowKey = "set_row_${set.id}",
-        onDelete = onDelete,
+        isOpen = isOpen,
+        onDragStarted = onDragStarted,
+        onOpenChanged = onOpenChanged,
+        onDelete = {
+            onOpenChanged(false)
+            onDelete()
+        },
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -1280,7 +1372,7 @@ fun WorkoutSetRow(
                     .background(
                         when {
                             set.isCompleted -> LogWorkoutSuccess
-                            else -> LogWorkoutSubtleBackground
+                            else -> LogWorkoutCardBackground
                         }
                     )
                     .clickable(
@@ -1500,7 +1592,7 @@ private fun DiscardWorkoutAction(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Discard workout",
-                    color = if (enabled) MaterialTheme.colorScheme.error else LogWorkoutSecondaryText,
+                    color = if (enabled) Color(0xFFB84A4A) else LogWorkoutSecondaryText,
                     fontSize = 15.sp,
                     lineHeight = 17.sp,
                     fontWeight = FontWeight.Medium
@@ -1522,12 +1614,18 @@ private fun DiscardWorkoutConfirmationDialog(
                 onDismiss()
             }
         },
+        containerColor = LogWorkoutCardBackground,
         title = {
-            Text(text = "Discard current workout?")
+            Text(
+                text = "Discard current workout?",
+                color = LogWorkoutText,
+                fontWeight = FontWeight.SemiBold
+            )
         },
         text = {
             Text(
-                text = "This will remove the current in-progress workout and any unsaved set logs."
+                text = "This will remove the current in-progress workout and any unsaved set logs.",
+                color = LogWorkoutSecondaryText
             )
         },
         confirmButton = {
@@ -1537,7 +1635,8 @@ private fun DiscardWorkoutConfirmationDialog(
             ) {
                 Text(
                     text = if (isDiscarding) "Discarding..." else "Discard",
-                    color = MaterialTheme.colorScheme.error
+                    color = Color(0xFFB84A4A),
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         },
@@ -1546,7 +1645,11 @@ private fun DiscardWorkoutConfirmationDialog(
                 onClick = onDismiss,
                 enabled = !isDiscarding
             ) {
-                Text(text = "Keep workout")
+                Text(
+                    text = "Keep workout",
+                    color = LogWorkoutPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     )
