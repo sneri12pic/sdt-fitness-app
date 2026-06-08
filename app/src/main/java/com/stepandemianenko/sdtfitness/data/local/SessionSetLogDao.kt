@@ -57,6 +57,47 @@ interface SessionSetLogDao {
 
     @Query(
         """
+        SELECT
+            se.exerciseId AS exerciseId,
+            ssl.actualWeightKg AS actualWeightKg,
+            ssl.actualReps AS actualReps,
+            ssl.completedAt AS completedAt
+        FROM session_set_logs AS ssl
+        INNER JOIN session_exercises AS se ON se.id = ssl.sessionExerciseId
+        INNER JOIN workout_sessions AS ws ON ws.id = ssl.sessionId
+        WHERE ssl.accountId = :accountId
+          AND se.accountId = :accountId
+          AND ws.accountId = :accountId
+          AND se.exerciseId IN (:exerciseIds)
+          AND ws.status = :completedStatus
+          AND ws.id != :excludeSessionId
+          AND NOT EXISTS (
+              SELECT 1
+              FROM session_set_logs AS later_ssl
+              INNER JOIN session_exercises AS later_se ON later_se.id = later_ssl.sessionExerciseId
+              INNER JOIN workout_sessions AS later_ws ON later_ws.id = later_ssl.sessionId
+              WHERE later_ssl.accountId = :accountId
+                AND later_se.accountId = :accountId
+                AND later_ws.accountId = :accountId
+                AND later_se.exerciseId = se.exerciseId
+                AND later_ws.status = :completedStatus
+                AND later_ws.id != :excludeSessionId
+                AND (
+                    later_ssl.completedAt > ssl.completedAt
+                    OR (later_ssl.completedAt = ssl.completedAt AND later_ssl.id > ssl.id)
+                )
+          )
+        """
+    )
+    suspend fun getLatestCompletedResultsForExercises(
+        accountId: String,
+        exerciseIds: List<String>,
+        completedStatus: String,
+        excludeSessionId: Long
+    ): List<ExerciseSetResultByExerciseRow>
+
+    @Query(
+        """
         SELECT ssl.actualWeightKg, ssl.actualReps, ssl.completedAt
         FROM session_set_logs AS ssl
         INNER JOIN session_exercises AS se ON se.id = ssl.sessionExerciseId
@@ -77,6 +118,61 @@ interface SessionSetLogDao {
         completedStatus: String,
         excludeSessionId: Long
     ): ExerciseSetResultRow?
+
+    @Query(
+        """
+        SELECT
+            se.exerciseId AS exerciseId,
+            ssl.actualWeightKg AS actualWeightKg,
+            ssl.actualReps AS actualReps,
+            ssl.completedAt AS completedAt
+        FROM session_set_logs AS ssl
+        INNER JOIN session_exercises AS se ON se.id = ssl.sessionExerciseId
+        INNER JOIN workout_sessions AS ws ON ws.id = ssl.sessionId
+        WHERE ssl.accountId = :accountId
+          AND se.accountId = :accountId
+          AND ws.accountId = :accountId
+          AND se.exerciseId IN (:exerciseIds)
+          AND ws.status = :completedStatus
+          AND ws.id != :excludeSessionId
+          AND NOT EXISTS (
+              SELECT 1
+              FROM session_set_logs AS better_ssl
+              INNER JOIN session_exercises AS better_se ON better_se.id = better_ssl.sessionExerciseId
+              INNER JOIN workout_sessions AS better_ws ON better_ws.id = better_ssl.sessionId
+              WHERE better_ssl.accountId = :accountId
+                AND better_se.accountId = :accountId
+                AND better_ws.accountId = :accountId
+                AND better_se.exerciseId = se.exerciseId
+                AND better_ws.status = :completedStatus
+                AND better_ws.id != :excludeSessionId
+                AND (
+                    better_ssl.actualWeightKg > ssl.actualWeightKg
+                    OR (
+                        better_ssl.actualWeightKg = ssl.actualWeightKg
+                        AND better_ssl.actualReps > ssl.actualReps
+                    )
+                    OR (
+                        better_ssl.actualWeightKg = ssl.actualWeightKg
+                        AND better_ssl.actualReps = ssl.actualReps
+                        AND better_ssl.completedAt > ssl.completedAt
+                    )
+                    OR (
+                        better_ssl.actualWeightKg = ssl.actualWeightKg
+                        AND better_ssl.actualReps = ssl.actualReps
+                        AND better_ssl.completedAt = ssl.completedAt
+                        AND better_ssl.id > ssl.id
+                    )
+                )
+          )
+        """
+    )
+    suspend fun getPersonalBestsForExercises(
+        accountId: String,
+        exerciseIds: List<String>,
+        completedStatus: String,
+        excludeSessionId: Long
+    ): List<ExerciseSetResultByExerciseRow>
 
     @Query(
         """

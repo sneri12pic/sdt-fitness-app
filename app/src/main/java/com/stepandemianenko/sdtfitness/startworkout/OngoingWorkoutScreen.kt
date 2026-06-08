@@ -336,6 +336,7 @@ fun LogWorkoutScreen(
     BackHandler(enabled = enableBackHandler, onBack = onBackClick)
 
     val session = uiState.session
+    val rpeOptions = remember { defaultLogWorkoutRpeOptions() }
     Scaffold(
         modifier = modifier,
         containerColor = LogWorkoutBackground,
@@ -407,7 +408,7 @@ fun LogWorkoutScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(LogWorkoutDimens.SectionSpacing)
         ) {
-            item(key = "session_summary") {
+            item(key = "session_summary", contentType = "session_summary") {
                 SessionSummaryRow(
                     duration = session.durationText,
                     volume = session.volumeText,
@@ -417,11 +418,12 @@ fun LogWorkoutScreen(
 
             items(
                 items = session.exercises,
-                key = { exercise -> exercise.id }
+                key = { exercise -> exercise.id },
+                contentType = { "exercise_log_card" }
             ) { exercise ->
                 ExerciseLogCard(
                     exercise = exercise,
-                    rpeOptions = defaultLogWorkoutRpeOptions(),
+                    rpeOptions = rpeOptions,
                     onUpdateSetWeight = { setId, weight ->
                         onUpdateSetWeight(exercise.id, setId, weight)
                     },
@@ -448,18 +450,18 @@ fun LogWorkoutScreen(
                 )
             }
 
-            item(key = "bottom_actions") {
+            item(key = "bottom_actions", contentType = "bottom_action") {
                 AddExerciseButton(onAddExercise = onAddExercise)
             }
 
-            item(key = "discard_action") {
+            item(key = "discard_action", contentType = "discard_action") {
                 DiscardWorkoutAction(
                     enabled = !uiState.isDiscarding,
                     onClick = onDiscardWorkoutClick
                 )
             }
 
-            item(key = "bottom_spacer") {
+            item(key = "bottom_spacer", contentType = "spacer") {
                 Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
             }
         }
@@ -896,6 +898,8 @@ fun SessionSummaryRow(
     volume: String,
     sets: String
 ) {
+    val workoutThumbPainter = painterResource(id = R.drawable.home_workout_thumb)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = LogWorkoutCardBackground,
@@ -916,7 +920,7 @@ fun SessionSummaryRow(
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.home_workout_thumb),
+                    painter = workoutThumbPainter,
                     contentDescription = null,
                     modifier = Modifier.size(24.dp)
                 )
@@ -966,6 +970,9 @@ fun ExerciseLogCard(
     onAddSet: () -> Unit,
     onToggleRestTimer: () -> Unit
 ) {
+    val thumbnailPainter = painterResource(id = exercise.thumbnailRes)
+    val morePainter = painterResource(id = R.drawable.start_workout_icon_more)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = LogWorkoutCardBackground,
@@ -989,7 +996,7 @@ fun ExerciseLogCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Image(
-                        painter = painterResource(id = exercise.thumbnailRes),
+                        painter = thumbnailPainter,
                         contentDescription = exercise.name,
                         modifier = Modifier
                             .size(44.dp)
@@ -1012,7 +1019,7 @@ fun ExerciseLogCard(
                     )
 
                     Image(
-                        painter = painterResource(id = R.drawable.start_workout_icon_more),
+                        painter = morePainter,
                         contentDescription = "More",
                         modifier = Modifier.size(20.dp)
                     )
@@ -1143,6 +1150,7 @@ private fun SetCellText(
     )
 }
 
+// TODO : Use Same Swipe to Delete as in Creatine Quest
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeToDeleteContainer(
@@ -1152,6 +1160,7 @@ private fun SwipeToDeleteContainer(
     content: @Composable () -> Unit
 ) {
     key(rowKey) {
+        val deletePainter = painterResource(id = R.drawable.start_workout_icon_bin)
         val dismissState = rememberSwipeToDismissBoxState(
             positionalThreshold = { fullWidth -> fullWidth * 0.35f },
             confirmValueChange = { targetValue ->
@@ -1187,7 +1196,7 @@ private fun SwipeToDeleteContainer(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.start_workout_icon_bin),
+                                painter = deletePainter,
                                 contentDescription = null,
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
@@ -1202,6 +1211,7 @@ private fun SwipeToDeleteContainer(
     }
 }
 
+// TODO : Use Same Swipe to Delete as in Creatine Quest
 @Composable
 fun WorkoutSetRow(
     set: WorkoutSetUiModel,
@@ -1210,6 +1220,8 @@ fun WorkoutSetRow(
     onToggleCompleted: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val checkMarkPainter = painterResource(id = R.drawable.check_mark)
+
     SwipeToDeleteContainer(
         rowKey = "set_row_${set.id}",
         onDelete = onDelete,
@@ -1291,7 +1303,7 @@ fun WorkoutSetRow(
             ) {
                 if (set.isCompleted) {
                     Image(
-                        painter = painterResource(id = R.drawable.check_mark),
+                        painter = checkMarkPainter,
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
                         contentScale = ContentScale.Fit
@@ -1392,6 +1404,9 @@ fun PostSetFeedbackCard(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(rpeOptions, key = { option -> option.rpeValue }) { option ->
                     val selected = set.selectedRpe == option.rpeValue
+                    val optionIconPainter = painterResource(
+                        id = if (selected) option.selectedIconRes else option.iconRes
+                    )
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = if (selected) LogWorkoutSuccessSoft else LogWorkoutCardBackground,
@@ -1409,9 +1424,7 @@ fun PostSetFeedbackCard(
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Image(
-                                painter = painterResource(
-                                    id = if (selected) option.selectedIconRes else option.iconRes
-                                ),
+                                painter = optionIconPainter,
                                 contentDescription = option.label,
                                 modifier = Modifier.size(24.dp)
                             )

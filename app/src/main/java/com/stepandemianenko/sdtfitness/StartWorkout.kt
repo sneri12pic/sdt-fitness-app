@@ -50,9 +50,6 @@ class StartWorkout : ComponentActivity() {
                     },
                     openAddExerciseOnStart = openAddExerciseOnStart,
                     appendToSessionId = appendToSessionId,
-                    onShortenSessionClick = { },
-                    onEditWorkoutClick = { },
-                    onExerciseClick = { },
                     onAddExerciseClick = { },
                     onHomeClick = {
                         startActivity(Intent(this, Home::class.java))

@@ -4,14 +4,18 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
+import com.stepandemianenko.sdtfitness.data.local.ExerciseCatalogListItem
 import com.stepandemianenko.sdtfitness.data.repository.SessionExerciseDraft
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -19,42 +23,31 @@ class StartWorkoutViewModel(
     application: Application
 ) : AndroidViewModel(application) {
 
-    private data class DeletedExerciseSnapshot(
-        val exercise: WorkoutExerciseUiModel,
-        val index: Int
+    private data class SelectExercisesDerivedState(
+        val isLoading: Boolean,
+        val searchQuery: String,
+        val selectedMuscleGroup: String?,
+        val muscleGroups: List<String>,
+        val exercises: List<SelectExerciseItemUiModel>,
+        val selectedExerciseIds: Set<String>
     )
 
-    private val _uiState = MutableStateFlow(StartWorkoutFakeStateProvider.loadingState())
+    private val _uiState = MutableStateFlow(StartWorkoutUiState(isLoading = true))
     val uiState: StateFlow<StartWorkoutUiState> = _uiState.asStateFlow()
     private val _effects = MutableSharedFlow<StartWorkoutEffect>(extraBufferCapacity = 1)
     val effects: SharedFlow<StartWorkoutEffect> = _effects.asSharedFlow()
-    private var lastDeletedExercise: DeletedExerciseSnapshot? = null
     private val workoutSessionRepository = AppGraph.workoutSessionRepository(application)
     private val workoutPlanRepository = AppGraph.workoutPlanRepository(application)
     private val exerciseCatalogRepository = AppGraph.exerciseCatalogRepository(application)
-    private val homeRepository = AppGraph.homeRepository(application)
+    private val selectedExerciseIds = MutableStateFlow<Set<String>>(emptySet())
+    private val searchQuery = MutableStateFlow("")
+    private val selectedMuscleGroup = MutableStateFlow<String?>(null)
     private var appendToSessionId: Long? = null
     private var appendModeEnabled: Boolean = false
 
     init {
-        _uiState.value = StartWorkoutFakeStateProvider.emptyState()
-
-        viewModelScope.launch {
-            exerciseCatalogRepository.ensureSeeded()
-            exerciseCatalogRepository.observeExercises().collect { exercises ->
-                _uiState.update { current ->
-                    current.copy(
-                        exerciseCatalog = exercises.map { exercise ->
-                            ExerciseCatalogItemUiModel(
-                                id = exercise.id,
-                                title = exercise.title,
-                                muscleGroup = exercise.muscleGroup
-                            )
-                        }
-                    )
-                }
-            }
-        }
+        observeExerciseSelectionState()
+        preloadExerciseCatalog()
 
         viewModelScope.launch {
             workoutPlanRepository.observePlans().collect { plans ->
@@ -67,21 +60,11 @@ class StartWorkoutViewModel(
                         )
                     }
                     current.copy(
-                        customExerciseSets = customSets,
-                        selectedCustomSetId = current.selectedCustomSetId?.takeIf { selectedId ->
-                            customSets.any { it.id == selectedId }
-                        }
-                    )
-                }
-            }
-        }
-
-        viewModelScope.launch {
-            homeRepository.dashboardState.collect { dashboard ->
-                val streakDays = dashboard.currentStreakCount
-                _uiState.update { current ->
-                    current.copy(
-                        workoutPlan = current.workoutPlan?.withConsistencyStreak(streakDays)
+                        selectExercises = current.selectExercises.copy(
+                            customExerciseSets = customSets,
+                            selectedCustomSetId = current.selectExercises.selectedCustomSetId
+                                ?.takeIf { selectedId -> customSets.any { it.id == selectedId } }
+                        )
                     )
                 }
             }
@@ -90,7 +73,6 @@ class StartWorkoutViewModel(
 
     fun onEvent(event: StartWorkoutUiEvent) {
         when (event) {
-            StartWorkoutUiEvent.ShortenSessionClick -> applyShortenedSession()
             StartWorkoutUiEvent.AddExerciseClick -> openExercisePicker(
                 title = "Add Exercise",
                 actionVerb = if (appendModeEnabled) "Add" else "Start"
@@ -99,11 +81,10 @@ class StartWorkoutViewModel(
                 title = "Plans",
                 actionVerb = if (appendModeEnabled) "Add" else "Start"
             )
-            is StartWorkoutUiEvent.CompleteOrSkipExercise -> completeOrSkipExercise(event.exerciseId)
-            is StartWorkoutUiEvent.DeleteExercise -> deleteExercise(event.exerciseId)
-            StartWorkoutUiEvent.UndoDeleteExercise -> undoDeleteExercise()
             StartWorkoutUiEvent.CloseExercisePickerClick -> closeExercisePicker()
             StartWorkoutUiEvent.ConfirmExerciseSelectionClick -> applyExerciseSelection()
+            is StartWorkoutUiEvent.SearchQueryChanged -> searchQuery.value = event.query
+            is StartWorkoutUiEvent.MuscleGroupSelected -> selectedMuscleGroup.value = event.muscleGroup
             is StartWorkoutUiEvent.ToggleExerciseSelection -> toggleExerciseSelection(event.exerciseId)
             is StartWorkoutUiEvent.SaveCustomExerciseSet -> saveCustomExerciseSet(
                 setId = event.setId,
@@ -112,18 +93,6 @@ class StartWorkoutViewModel(
             )
             is StartWorkoutUiEvent.SelectCustomExerciseSet -> selectCustomExerciseSet(event.setId)
             is StartWorkoutUiEvent.DeleteCustomExerciseSet -> deleteCustomExerciseSet(event.setId)
-            is StartWorkoutUiEvent.UpdateExerciseWeight -> updateExerciseTargets(
-                exerciseId = event.exerciseId,
-                weightKg = event.weightKg
-            )
-            is StartWorkoutUiEvent.UpdateExerciseReps -> updateExerciseTargets(
-                exerciseId = event.exerciseId,
-                reps = event.reps
-            )
-            StartWorkoutUiEvent.StartWorkoutClick -> startWorkout()
-            StartWorkoutUiEvent.BackClick,
-            StartWorkoutUiEvent.EditWorkoutClick,
-            is StartWorkoutUiEvent.ExerciseClick -> Unit
         }
     }
 
@@ -135,105 +104,22 @@ class StartWorkoutViewModel(
         appendModeEnabled = enabled
     }
 
-    private fun applyShortenedSession() {
-        _uiState.update { current ->
-            val currentPlan = current.workoutPlan ?: return@update current
-            if (current.isSessionShortened) return@update current
-
-            val selectedExercises = buildExercisesFromSelection(
-                isShortened = true,
-                selectedExerciseIds = current.selectedExerciseIds,
-                exerciseCatalog = current.exerciseCatalog
-            )
-
-            current.copy(
-                isSessionShortened = true,
-                workoutPlan = StartWorkoutFakeStateProvider.defaultPlan(isShortened = true).copy(
-                    id = currentPlan.id,
-                    headerTitle = currentPlan.headerTitle,
-                    headerSubtitle = currentPlan.headerSubtitle,
-                    streakCard = currentPlan.streakCard,
-                    basedOnPlanText = currentPlan.basedOnPlanText,
-                    selectedWorkoutsTitle = currentPlan.selectedWorkoutsTitle,
-                    selectedWorkoutBadge = currentPlan.selectedWorkoutBadge,
-                    exercises = if (selectedExercises.isEmpty()) {
-                        StartWorkoutFakeStateProvider.defaultPlan(isShortened = true).exercises
-                    } else {
-                        selectedExercises
-                    },
-                    swapExerciseCard = currentPlan.swapExerciseCard,
-                    primaryCtaText = currentPlan.primaryCtaText,
-                    miniPlayer = currentPlan.miniPlayer
-                )
-            )
-        }
-    }
-
     private fun openExercisePicker(
         title: String,
         actionVerb: String
     ) {
         _uiState.update { current ->
-            val selectedFromPlan = current.workoutPlan
-                ?.exercises
-                ?.map { it.id }
-                ?.toSet()
-            val fallbackSelection = current.selectedExerciseIds
-
             current.copy(
                 isSelectingExercises = true,
-                exercisePickerTitle = title,
-                exercisePickerActionVerb = actionVerb,
-                selectedExerciseIds = selectedFromPlan ?: fallbackSelection,
-                selectedCustomSetId = current.selectedCustomSetId?.takeIf { selectedId ->
-                    current.customExerciseSets.any { it.id == selectedId }
-                }
-            )
-        }
-    }
-
-    private fun completeOrSkipExercise(exerciseId: String) {
-        lastDeletedExercise = null
-        _uiState.update { current ->
-            val plan = current.workoutPlan ?: return@update current
-            current.copy(
-                workoutPlan = plan.copy(
-                    exercises = plan.exercises.filterNot { it.id == exerciseId }
+                selectExercises = current.selectExercises.copy(
+                    title = title,
+                    primaryActionVerb = actionVerb,
+                    selectedCustomSetId = current.selectExercises.selectedCustomSetId?.takeIf { selectedId ->
+                        current.selectExercises.customExerciseSets.any { it.id == selectedId }
+                    }
                 )
             )
         }
-    }
-
-    private fun deleteExercise(exerciseId: String) {
-        _uiState.update { current ->
-            val plan = current.workoutPlan ?: return@update current
-            val targetIndex = plan.exercises.indexOfFirst { it.id == exerciseId }
-            if (targetIndex == -1) return@update current
-
-            val updatedExercises = plan.exercises.toMutableList()
-            val removedExercise = updatedExercises.removeAt(targetIndex)
-            lastDeletedExercise = DeletedExerciseSnapshot(
-                exercise = removedExercise,
-                index = targetIndex
-            )
-
-            current.copy(workoutPlan = plan.copy(exercises = updatedExercises))
-        }
-    }
-
-    private fun undoDeleteExercise() {
-        val snapshot = lastDeletedExercise ?: return
-        _uiState.update { current ->
-            val plan = current.workoutPlan ?: return@update current
-            if (plan.exercises.any { it.id == snapshot.exercise.id }) return@update current
-
-            val updatedExercises = plan.exercises.toMutableList()
-            val insertIndex = snapshot.index.coerceIn(0, updatedExercises.size)
-            updatedExercises.add(insertIndex, snapshot.exercise)
-
-            current.copy(workoutPlan = plan.copy(exercises = updatedExercises))
-        }
-        lastDeletedExercise = null
     }
 
     private fun closeExercisePicker() {
@@ -241,20 +127,24 @@ class StartWorkoutViewModel(
     }
 
     private fun toggleExerciseSelection(exerciseId: String) {
-        _uiState.update { current ->
-            val activeSet = current.selectedCustomSetId
-                ?.let { selectedSetId -> current.customExerciseSets.find { it.id == selectedSetId } }
-            val wasSelected = current.selectedExerciseIds.contains(exerciseId)
-            val updatedSelection = current.selectedExerciseIds.toMutableSet().apply {
-                if (!add(exerciseId)) remove(exerciseId)
-            }
-            val shouldClearSelectedSet = activeSet != null &&
-                wasSelected &&
-                activeSet.exerciseIds.contains(exerciseId)
+        val currentSelection = selectedExerciseIds.value
+        val updatedSelection = currentSelection.toMutableSet().apply {
+            if (!add(exerciseId)) remove(exerciseId)
+        }
+        selectedExerciseIds.value = updatedSelection
 
+        _uiState.update { current ->
+            val activeSet = current.selectExercises.selectedCustomSetId
+                ?.let { selectedSetId ->
+                    current.selectExercises.customExerciseSets.find { it.id == selectedSetId }
+                }
+            val shouldClearSelectedSet = activeSet != null &&
+                currentSelection.contains(exerciseId) &&
+                activeSet.exerciseIds.contains(exerciseId)
             current.copy(
-                selectedExerciseIds = updatedSelection,
-                selectedCustomSetId = if (shouldClearSelectedSet) null else current.selectedCustomSetId
+                selectExercises = current.selectExercises.copy(
+                    selectedCustomSetId = if (shouldClearSelectedSet) null else current.selectExercises.selectedCustomSetId
+                )
             )
         }
     }
@@ -267,7 +157,7 @@ class StartWorkoutViewModel(
         val normalizedName = name.trim()
         if (normalizedName.isBlank() || exerciseIds.isEmpty()) return
 
-        val current = _uiState.value
+        val current = _uiState.value.selectExercises
         val normalizedExerciseIds = exerciseIds.toSet()
         val existing = setId?.let { id -> current.customExerciseSets.find { it.id == id } }
         val targetId = existing?.id ?: buildCustomSetId(
@@ -287,11 +177,13 @@ class StartWorkoutViewModel(
             current.customExerciseSets + updatedSet
         }
 
-        _uiState.update {
-            current.copy(
-                customExerciseSets = updatedSets,
-                selectedCustomSetId = updatedSet.id,
-                selectedExerciseIds = normalizedExerciseIds
+        selectedExerciseIds.value = normalizedExerciseIds
+        _uiState.update { state ->
+            state.copy(
+                selectExercises = state.selectExercises.copy(
+                    customExerciseSets = updatedSets,
+                    selectedCustomSetId = updatedSet.id
+                )
             )
         }
         viewModelScope.launch {
@@ -304,25 +196,25 @@ class StartWorkoutViewModel(
     }
 
     private fun selectCustomExerciseSet(setId: String) {
-        _uiState.update { current ->
-            val set = current.customExerciseSets.find { it.id == setId } ?: return@update current
-            val isTappingAlreadySelectedSet = current.selectedCustomSetId == setId
-            if (isTappingAlreadySelectedSet) {
-                current.copy(
-                    selectedCustomSetId = null,
-                    selectedExerciseIds = current.selectedExerciseIds - set.exerciseIds
-                )
-            } else {
-                current.copy(
-                    selectedCustomSetId = set.id,
-                    selectedExerciseIds = set.exerciseIds
-                )
-            }
+        val current = _uiState.value.selectExercises
+        val set = current.customExerciseSets.find { it.id == setId } ?: return
+        val isTappingAlreadySelectedSet = current.selectedCustomSetId == setId
+        val nextSelectedSetId = if (isTappingAlreadySelectedSet) null else set.id
+        selectedExerciseIds.value = if (isTappingAlreadySelectedSet) {
+            current.selectedExerciseIds - set.exerciseIds
+        } else {
+            set.exerciseIds
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                selectExercises = state.selectExercises.copy(selectedCustomSetId = nextSelectedSetId)
+            )
         }
     }
 
     private fun deleteCustomExerciseSet(setId: String) {
-        val current = _uiState.value
+        val current = _uiState.value.selectExercises
         val updatedSets = current.customExerciseSets.filterNot { it.id == setId }
         val fallbackSelectedSetId = current.selectedCustomSetId?.takeIf { id ->
             updatedSets.any { it.id == id }
@@ -331,11 +223,13 @@ class StartWorkoutViewModel(
             ?.let { selectedId -> updatedSets.find { it.id == selectedId }?.exerciseIds }
             ?: current.selectedExerciseIds
 
-        _uiState.update {
-            current.copy(
-                customExerciseSets = updatedSets,
-                selectedCustomSetId = fallbackSelectedSetId,
-                selectedExerciseIds = fallbackSelectedExerciseIds
+        selectedExerciseIds.value = fallbackSelectedExerciseIds
+        _uiState.update { state ->
+            state.copy(
+                selectExercises = state.selectExercises.copy(
+                    customExerciseSets = updatedSets,
+                    selectedCustomSetId = fallbackSelectedSetId
+                )
             )
         }
         viewModelScope.launch {
@@ -349,76 +243,38 @@ class StartWorkoutViewModel(
             return
         }
 
-        var shouldStartWorkout = false
-        _uiState.update { current ->
-            val selectedExercises = buildExercisesFromSelection(
-                isShortened = current.isSessionShortened,
-                selectedExerciseIds = current.selectedExerciseIds,
-                exerciseCatalog = current.exerciseCatalog
+        val current = _uiState.value.selectExercises
+        viewModelScope.launch {
+            val selectedExercises = buildSessionExerciseDrafts(selectedExerciseIds = current.selectedExerciseIds)
+            if (selectedExercises.isEmpty()) return@launch
+
+            _uiState.update { it.copy(isSelectingExercises = false) }
+            startNewSessionFromSelectedExercises(
+                templateId = current.selectedCustomSetId ?: CUSTOM_WORKOUT_TEMPLATE_ID,
+                selectedExercises = selectedExercises
             )
-
-            if (selectedExercises.isEmpty()) {
-                return@update current.copy(
-                    isSelectingExercises = false,
-                    workoutPlan = null
-                )
-            }
-
-            val basePlan = current.workoutPlan
-                ?: StartWorkoutFakeStateProvider.defaultPlan(isShortened = current.isSessionShortened)
-            val currentStreakDays = homeRepository.dashboardState.value.currentStreakCount
-            val selectedPlan = current.selectedCustomSetId
-                ?.let { selectedId -> current.customExerciseSets.find { it.id == selectedId } }
-
-            current.copy(
-                isSelectingExercises = false,
-                workoutPlan = basePlan
-                    .withConsistencyStreak(currentStreakDays)
-                    .copy(
-                        id = selectedPlan?.id ?: basePlan.id,
-                        basedOnPlanText = selectedPlan?.let { "From your ${it.name} plan" }
-                            ?: basePlan.basedOnPlanText,
-                        exercises = selectedExercises
-                    )
-            )
-                .also { shouldStartWorkout = true }
-        }
-        if (shouldStartWorkout) {
-            startWorkout()
         }
     }
 
     private fun appendSelectedExercisesToCurrentSession() {
-        val current = _uiState.value
-        val selectedExercises = buildExercisesFromSelection(
-            isShortened = false,
-            selectedExerciseIds = current.selectedExerciseIds,
-            exerciseCatalog = current.exerciseCatalog
-        )
-        if (selectedExercises.isEmpty()) {
-            _uiState.update { it.copy(isSelectingExercises = false) }
-            return
-        }
-
-        _uiState.update { it.copy(isSelectingExercises = false) }
+        val current = _uiState.value.selectExercises
         viewModelScope.launch {
+            val selectedExercises = buildSessionExerciseDrafts(selectedExerciseIds = current.selectedExerciseIds)
+            if (selectedExercises.isEmpty()) return@launch
+
+            _uiState.update { it.copy(isSelectingExercises = false) }
             val sessionId = appendToSessionId ?: workoutSessionRepository.getActiveSessionId()
             if (sessionId == null) {
-                startNewSessionFromSelectedExercises(selectedExercises)
+                startNewSessionFromSelectedExercises(
+                    templateId = current.selectedCustomSetId ?: CUSTOM_ONGOING_WORKOUT_TEMPLATE_ID,
+                    selectedExercises = selectedExercises
+                )
                 return@launch
             }
 
             val appended = workoutSessionRepository.appendExercisesToSession(
                 sessionId = sessionId,
-                exercisesToAppend = selectedExercises.map { exercise ->
-                    SessionExerciseDraft(
-                        exerciseId = exercise.id,
-                        exerciseName = exercise.name,
-                        targetSets = 1,
-                        targetReps = exercise.targetReps,
-                        targetWeightKg = exercise.targetWeightKg
-                    )
-                },
+                exercisesToAppend = selectedExercises,
                 forceSingleSet = true
             )
 
@@ -434,20 +290,13 @@ class StartWorkoutViewModel(
     }
 
     private suspend fun startNewSessionFromSelectedExercises(
-        selectedExercises: List<WorkoutExerciseUiModel>
+        templateId: String,
+        selectedExercises: List<SessionExerciseDraft>
     ) {
         runCatching {
             workoutSessionRepository.startOrResumeSession(
-                templateId = "custom_ongoing_workout",
-                orderedExercises = selectedExercises.map { exercise ->
-                    SessionExerciseDraft(
-                        exerciseId = exercise.id,
-                        exerciseName = exercise.name,
-                        targetSets = 1,
-                        targetReps = exercise.targetReps,
-                        targetWeightKg = exercise.targetWeightKg
-                    )
-                }
+                templateId = templateId,
+                orderedExercises = selectedExercises
             )
         }.onSuccess { result ->
             _effects.emit(
@@ -459,82 +308,106 @@ class StartWorkoutViewModel(
         }
     }
 
-    private fun buildExercisesFromSelection(
-        isShortened: Boolean,
-        selectedExerciseIds: Set<String>,
-        exerciseCatalog: List<ExerciseCatalogItemUiModel>
-    ): List<WorkoutExerciseUiModel> {
+    private fun observeExerciseSelectionState() {
+        viewModelScope.launch {
+            combine(
+                exerciseCatalogRepository.observeExerciseList(),
+                selectedExerciseIds,
+                searchQuery,
+                selectedMuscleGroup
+            ) { exercises, selectedIds, query, muscleGroup ->
+                buildSelectExercisesDerivedState(
+                    exercises = exercises,
+                    selectedIds = selectedIds,
+                    query = query,
+                    muscleGroup = muscleGroup
+                )
+            }
+                .flowOn(Dispatchers.Default)
+                .collect { derived ->
+                    _uiState.update { current ->
+                        current.copy(
+                            isLoading = false,
+                            selectExercises = current.selectExercises.copy(
+                                isLoading = derived.isLoading,
+                                searchQuery = derived.searchQuery,
+                                selectedMuscleGroup = derived.selectedMuscleGroup,
+                                muscleGroups = derived.muscleGroups,
+                                exercises = derived.exercises,
+                                selectedExerciseIds = derived.selectedExerciseIds
+                            )
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun preloadExerciseCatalog() {
+        viewModelScope.launch {
+            exerciseCatalogRepository.ensureInitialSeeded(INITIAL_EXERCISE_CATALOG_LIMIT)
+            exerciseCatalogRepository.ensureSeeded()
+        }
+    }
+
+    private fun buildSelectExercisesDerivedState(
+        exercises: List<ExerciseCatalogListItem>,
+        selectedIds: Set<String>,
+        query: String,
+        muscleGroup: String?
+    ): SelectExercisesDerivedState {
+        val muscleGroups = exercises
+            .asSequence()
+            .map { it.muscleGroup }
+            .distinct()
+            .sortedBy { it.lowercase() }
+            .toList()
+        val validMuscleGroup = muscleGroup?.takeIf { selected ->
+            muscleGroups.any { it.equals(selected, ignoreCase = true) }
+        }
+        val normalizedQuery = query.trim()
+        val visibleExercises = exercises
+            .asSequence()
+            .filter { item ->
+                validMuscleGroup == null || item.muscleGroup.equals(validMuscleGroup, ignoreCase = true)
+            }
+            .filter { item ->
+                normalizedQuery.isBlank() || item.title.contains(normalizedQuery, ignoreCase = true)
+            }
+            .map { item ->
+                SelectExerciseItemUiModel(
+                    id = item.id,
+                    title = item.title,
+                    muscleGroup = item.muscleGroup,
+                    isSelected = selectedIds.contains(item.id)
+                )
+            }
+            .toList()
+
+        return SelectExercisesDerivedState(
+            isLoading = false,
+            searchQuery = query,
+            selectedMuscleGroup = validMuscleGroup,
+            muscleGroups = muscleGroups,
+            exercises = visibleExercises,
+            selectedExerciseIds = selectedIds
+        )
+    }
+
+    private suspend fun buildSessionExerciseDrafts(
+        selectedExerciseIds: Set<String>
+    ): List<SessionExerciseDraft> {
         if (selectedExerciseIds.isEmpty()) return emptyList()
 
-        val template = StartWorkoutFakeStateProvider.exerciseTemplate(isShortened = isShortened)
-
-        return exerciseCatalog
-            .filter { selectedExerciseIds.contains(it.id) }
-            .map { item ->
-                template.copy(
-                    id = item.id,
-                    name = item.title
+        return exerciseCatalogRepository.getExerciseListItemsByIds(selectedExerciseIds)
+            .map { exercise ->
+                SessionExerciseDraft(
+                    exerciseId = exercise.id,
+                    exerciseName = exercise.title,
+                    targetSets = DEFAULT_TARGET_SETS,
+                    targetReps = DEFAULT_TARGET_REPS,
+                    targetWeightKg = DEFAULT_TARGET_WEIGHT_KG
                 )
             }
-    }
-
-    private fun updateExerciseTargets(
-        exerciseId: String,
-        weightKg: Int? = null,
-        reps: Int? = null
-    ) {
-        _uiState.update { current ->
-            val plan = current.workoutPlan ?: return@update current
-            val updatedExercises = plan.exercises.map { exercise ->
-                if (exercise.id != exerciseId) return@map exercise
-
-                val updatedWeight = weightKg?.coerceAtLeast(0) ?: exercise.targetWeightKg
-                val updatedReps = reps?.coerceAtLeast(1) ?: exercise.targetReps
-
-                exercise.copy(
-                    prescription = "@ $updatedWeight kg / $updatedReps reps",
-                    targetWeightKg = updatedWeight,
-                    targetReps = updatedReps
-                )
-            }
-
-            current.copy(workoutPlan = plan.copy(exercises = updatedExercises))
-        }
-    }
-
-    private fun startWorkout() {
-        val currentPlan = _uiState.value.workoutPlan ?: return
-        if (currentPlan.exercises.isEmpty()) return
-
-        _uiState.update { it.copy(isStartingWorkout = true) }
-
-        viewModelScope.launch {
-            runCatching {
-                val orderedExercises = currentPlan.exercises.map { exercise ->
-                    SessionExerciseDraft(
-                        exerciseId = exercise.id,
-                        exerciseName = exercise.name,
-                        targetSets = 1,
-                        targetReps = exercise.targetReps,
-                        targetWeightKg = exercise.targetWeightKg
-                    )
-                }
-
-                workoutSessionRepository.startOrResumeSession(
-                    templateId = currentPlan.id,
-                    orderedExercises = orderedExercises
-                )
-            }.onSuccess { result ->
-                _effects.emit(
-                    StartWorkoutEffect.NavigateToOngoingWorkout(
-                        sessionId = result.sessionId,
-                        resumedExisting = result.resumedExisting
-                    )
-                )
-            }
-
-            _uiState.update { it.copy(isStartingWorkout = false) }
-        }
     }
 
     private fun buildCustomSetId(
@@ -558,19 +431,12 @@ class StartWorkoutViewModel(
         return candidate
     }
 
-    private fun WorkoutPlanUiModel.withConsistencyStreak(streakDays: Int): WorkoutPlanUiModel {
-        return copy(
-            streakCard = streakCard.copy(
-                title = formatConsistencyStreakTitle(streakDays)
-            )
-        )
-    }
-
-    private fun formatConsistencyStreakTitle(streakDays: Int): String {
-        return when {
-            streakDays <= 0 -> "0-day consistency streak"
-            streakDays == 1 -> "1-day consistency streak"
-            else -> "$streakDays-day consistency streak"
-        }
+    private companion object {
+        const val CUSTOM_WORKOUT_TEMPLATE_ID = "custom_workout"
+        const val CUSTOM_ONGOING_WORKOUT_TEMPLATE_ID = "custom_ongoing_workout"
+        const val INITIAL_EXERCISE_CATALOG_LIMIT = 30
+        const val DEFAULT_TARGET_SETS = 1
+        const val DEFAULT_TARGET_REPS = 8
+        const val DEFAULT_TARGET_WEIGHT_KG = 0
     }
 }

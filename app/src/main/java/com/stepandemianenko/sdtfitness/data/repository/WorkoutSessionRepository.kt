@@ -2,6 +2,7 @@ package com.stepandemianenko.sdtfitness.data.repository
 
 import androidx.room.withTransaction
 import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.local.ExerciseSetResultByExerciseRow
 import com.stepandemianenko.sdtfitness.data.local.SessionExerciseDao
 import com.stepandemianenko.sdtfitness.data.local.SessionExerciseEntity
 import com.stepandemianenko.sdtfitness.data.local.SessionExerciseStatus
@@ -12,9 +13,12 @@ import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionDao
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionEntity
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 private val ACTIVE_SESSION_STATUSES = listOf(
@@ -143,6 +147,17 @@ sealed interface LogSetOutcome {
     data object NoActiveSession : LogSetOutcome
 }
 
+private data class ExerciseHistoryCacheKey(
+    val accountId: String,
+    val exerciseId: String,
+    val excludeSessionId: Long
+)
+
+private data class ExerciseHistorySnapshot(
+    val previousResult: PreviousExerciseResult?,
+    val personalBest: PreviousExerciseResult?
+)
+
 class WorkoutSessionRepository(
     private val database: WorkoutDatabase,
     private val accountSessionManager: AccountSessionManager
@@ -150,6 +165,8 @@ class WorkoutSessionRepository(
     private val sessionDao: WorkoutSessionDao = database.workoutSessionDao()
     private val exerciseDao: SessionExerciseDao = database.sessionExerciseDao()
     private val setLogDao: SessionSetLogDao = database.sessionSetLogDao()
+    private val exerciseHistoryCacheLock = Any()
+    private val exerciseHistoryCache = mutableMapOf<ExerciseHistoryCacheKey, ExerciseHistorySnapshot>()
 
     suspend fun startOrResumeSession(
         templateId: String?,
@@ -310,6 +327,8 @@ class WorkoutSessionRepository(
                 )
             }
         }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.IO)
     }
 
     suspend fun appendExercisesToSession(
@@ -377,6 +396,11 @@ class WorkoutSessionRepository(
                 val setsByExercise = setLogs
                     .sortedBy { it.completedAt }
                     .groupBy { it.sessionExerciseId }
+                val historyByExerciseId = getExerciseHistoryByExerciseId(
+                    accountId = accountId,
+                    exerciseIds = orderedExercises.map { it.exerciseId },
+                    excludeSessionId = session.id
+                )
 
                 val exerciseSnapshots = orderedExercises.map { exercise ->
                     val loggedSets = setsByExercise[exercise.id]
@@ -391,32 +415,7 @@ class WorkoutSessionRepository(
                                 rpe = log.rpe
                             )
                         }
-
-                    val previousResult = setLogDao.getLatestCompletedResultForExercise(
-                        accountId = accountId,
-                        exerciseId = exercise.exerciseId,
-                        completedStatus = WorkoutSessionStatus.COMPLETED,
-                        excludeSessionId = session.id
-                    )?.let {
-                        PreviousExerciseResult(
-                            weightKg = it.actualWeightKg,
-                            reps = it.actualReps,
-                            completedAt = it.completedAt
-                        )
-                    }
-
-                    val personalBest = setLogDao.getPersonalBestForExercise(
-                        accountId = accountId,
-                        exerciseId = exercise.exerciseId,
-                        completedStatus = WorkoutSessionStatus.COMPLETED,
-                        excludeSessionId = session.id
-                    )?.let {
-                        PreviousExerciseResult(
-                            weightKg = it.actualWeightKg,
-                            reps = it.actualReps,
-                            completedAt = it.completedAt
-                        )
-                    }
+                    val history = historyByExerciseId[exercise.exerciseId]
 
                     LogWorkoutExerciseSnapshot(
                         id = exercise.id,
@@ -427,8 +426,8 @@ class WorkoutSessionRepository(
                         targetReps = exercise.targetReps,
                         targetWeightKg = exercise.targetWeightKg,
                         loggedSets = loggedSets,
-                        previousResult = previousResult,
-                        personalBest = personalBest
+                        previousResult = history?.previousResult,
+                        personalBest = history?.personalBest
                     )
                 }
 
@@ -450,6 +449,8 @@ class WorkoutSessionRepository(
                 )
             }
         }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.IO)
     }
 
     suspend fun logCurrentSet(
@@ -1142,6 +1143,70 @@ class WorkoutSessionRepository(
             )
             true
         }
+    }
+
+    private suspend fun getExerciseHistoryByExerciseId(
+        accountId: String,
+        exerciseIds: List<String>,
+        excludeSessionId: Long
+    ): Map<String, ExerciseHistorySnapshot> {
+        val distinctExerciseIds = exerciseIds.distinct()
+        if (distinctExerciseIds.isEmpty()) return emptyMap()
+
+        val cached = synchronized(exerciseHistoryCacheLock) {
+            distinctExerciseIds.mapNotNull { exerciseId ->
+                val key = ExerciseHistoryCacheKey(
+                    accountId = accountId,
+                    exerciseId = exerciseId,
+                    excludeSessionId = excludeSessionId
+                )
+                exerciseHistoryCache[key]?.let { exerciseId to it }
+            }.toMap()
+        }
+        val missingExerciseIds = distinctExerciseIds.filterNot(cached::containsKey)
+        if (missingExerciseIds.isEmpty()) return cached
+
+        val latestByExerciseId = setLogDao.getLatestCompletedResultsForExercises(
+            accountId = accountId,
+            exerciseIds = missingExerciseIds,
+            completedStatus = WorkoutSessionStatus.COMPLETED,
+            excludeSessionId = excludeSessionId
+        ).associateBy { row -> row.exerciseId }
+        val personalBestByExerciseId = setLogDao.getPersonalBestsForExercises(
+            accountId = accountId,
+            exerciseIds = missingExerciseIds,
+            completedStatus = WorkoutSessionStatus.COMPLETED,
+            excludeSessionId = excludeSessionId
+        ).associateBy { row -> row.exerciseId }
+
+        val loaded = missingExerciseIds.associateWith { exerciseId ->
+            ExerciseHistorySnapshot(
+                previousResult = latestByExerciseId[exerciseId]?.toPreviousExerciseResult(),
+                personalBest = personalBestByExerciseId[exerciseId]?.toPreviousExerciseResult()
+            )
+        }
+
+        synchronized(exerciseHistoryCacheLock) {
+            loaded.forEach { (exerciseId, history) ->
+                exerciseHistoryCache[
+                    ExerciseHistoryCacheKey(
+                        accountId = accountId,
+                        exerciseId = exerciseId,
+                        excludeSessionId = excludeSessionId
+                    )
+                ] = history
+            }
+        }
+
+        return cached + loaded
+    }
+
+    private fun ExerciseSetResultByExerciseRow.toPreviousExerciseResult(): PreviousExerciseResult {
+        return PreviousExerciseResult(
+            weightKg = actualWeightKg,
+            reps = actualReps,
+            completedAt = completedAt
+        )
     }
 
     private suspend fun recalculateActiveSessionState(

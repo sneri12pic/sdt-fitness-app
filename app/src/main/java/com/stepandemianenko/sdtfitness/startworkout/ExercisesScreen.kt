@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -40,7 +41,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,13 +75,10 @@ private val ExercisesInfoMessageBg = Color(0xFFFFBE91).copy(alpha = 0.9f)
 
 @Composable
 fun ExercisesScreen(
-    title: String,
-    primaryActionVerb: String,
-    exercises: List<ExerciseCatalogItemUiModel>,
-    customExerciseSets: List<CustomExerciseSetUiModel>,
-    selectedCustomSetId: String?,
-    selectedExerciseIds: Set<String>,
+    uiState: SelectExercisesUiState,
     onBackClick: () -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onMuscleGroupSelect: (String?) -> Unit,
     onExerciseToggle: (String) -> Unit,
     onSaveCustomSet: (String?, String, Set<String>) -> Unit,
     onCustomSetSelect: (String) -> Unit,
@@ -93,30 +90,13 @@ fun ExercisesScreen(
 ) {
     BackHandler(onBack = onBackClick)
 
-    var searchQuery by rememberSaveable { mutableStateOf("") }
-    var selectedMuscleGroup by rememberSaveable { mutableStateOf<String?>(null) }
     var showMuscleGroups by rememberSaveable { mutableStateOf(false) }
     var showSetNamingPanel by rememberSaveable { mutableStateOf(false) }
     var namingSetId by rememberSaveable { mutableStateOf<String?>(null) }
     var customSetName by rememberSaveable { mutableStateOf("") }
     var showSelectExercisesMessage by rememberSaveable { mutableStateOf(false) }
 
-    val muscleGroups = remember(exercises) {
-        exercises
-            .map { it.muscleGroup }
-            .distinct()
-            .sortedBy { it.lowercase() }
-    }
-    val filteredExercises = remember(exercises, searchQuery, selectedMuscleGroup) {
-        exercises
-            .filter { item ->
-                selectedMuscleGroup == null || item.muscleGroup.equals(selectedMuscleGroup, ignoreCase = true)
-            }
-            .filter { item ->
-                searchQuery.isBlank() || item.title.contains(searchQuery, ignoreCase = true)
-            }
-    }
-    val selectedCount = selectedExerciseIds.size
+    val selectedCount = uiState.selectedExerciseIds.size
     LaunchedEffect(selectedCount) {
         if (selectedCount > 0) {
             showSelectExercisesMessage = false
@@ -126,20 +106,20 @@ fun ExercisesScreen(
             namingSetId = null
         }
     }
-    val activeCustomSet = customExerciseSets.find { it.id == selectedCustomSetId }
+    val activeCustomSet = uiState.customExerciseSets.find { it.id == uiState.selectedCustomSetId }
     val addButtonText = if (activeCustomSet != null) {
-        val addedCount = (selectedExerciseIds - activeCustomSet.exerciseIds).size
-        val removedCount = (activeCustomSet.exerciseIds - selectedExerciseIds).size
+        val addedCount = (uiState.selectedExerciseIds - activeCustomSet.exerciseIds).size
+        val removedCount = (activeCustomSet.exerciseIds - uiState.selectedExerciseIds).size
         when {
-            addedCount == 0 && removedCount == 0 -> "$primaryActionVerb ${activeCustomSet.name}"
-            removedCount == 0 -> "$primaryActionVerb ${activeCustomSet.name} +$addedCount"
-            addedCount == 0 -> "$primaryActionVerb ${activeCustomSet.name} -$removedCount"
-            else -> "$primaryActionVerb ${activeCustomSet.name} (modified)"
+            addedCount == 0 && removedCount == 0 -> "${uiState.primaryActionVerb} ${activeCustomSet.name}"
+            removedCount == 0 -> "${uiState.primaryActionVerb} ${activeCustomSet.name} +$addedCount"
+            addedCount == 0 -> "${uiState.primaryActionVerb} ${activeCustomSet.name} -$removedCount"
+            else -> "${uiState.primaryActionVerb} ${activeCustomSet.name} (modified)"
         }
     } else if (selectedCount == 1) {
-        "$primaryActionVerb 1 exercise"
+        "${uiState.primaryActionVerb} 1 exercise"
     } else {
-        "$primaryActionVerb $selectedCount exercises"
+        "${uiState.primaryActionVerb} $selectedCount exercises"
     }
     val listBottomPadding = if (selectedCount > 0) 76.dp else 10.dp
 
@@ -165,40 +145,43 @@ fun ExercisesScreen(
                     .fillMaxSize()
                     .padding(horizontal = 22.dp)
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
-                contentPadding = PaddingValues(top = 12.dp, bottom = listBottomPadding),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(top = 12.dp, bottom = listBottomPadding)
             ) {
                 item {
                     TopActionBar(
-                        title = title,
+                        title = uiState.title,
                         onBackClick = onBackClick
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
                 item {
                     SearchExerciseField(
-                        query = searchQuery,
-                        onQueryChange = { searchQuery = it }
+                        query = uiState.searchQuery,
+                        onQueryChange = onSearchQueryChange
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
                 item {
                     FilterBar(
-                        selectedMuscleGroup = selectedMuscleGroup,
+                        selectedMuscleGroup = uiState.selectedMuscleGroup,
                         onMusclesClick = { showMuscleGroups = !showMuscleGroups }
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
                 if (showMuscleGroups) {
                     item {
                         MuscleGroupsBlock(
-                            muscleGroups = muscleGroups,
-                            selectedMuscleGroup = selectedMuscleGroup,
+                            muscleGroups = uiState.muscleGroups,
+                            selectedMuscleGroup = uiState.selectedMuscleGroup,
                             onMuscleGroupClick = { group ->
-                                selectedMuscleGroup = group
+                                onMuscleGroupSelect(group)
                                 showMuscleGroups = false
                             }
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
 
@@ -216,7 +199,7 @@ fun ExercisesScreen(
                                     onSaveCustomSet(
                                         namingSetId,
                                         normalizedSetName,
-                                        selectedExerciseIds
+                                        uiState.selectedExerciseIds
                                     )
                                 }
                             }
@@ -224,13 +207,13 @@ fun ExercisesScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    customExerciseSets.forEach { customSet ->
+                    uiState.customExerciseSets.forEach { customSet ->
                         CreatedSetBlock(
                             setName = customSet.name,
-                            isSelected = customSet.id == selectedCustomSetId,
+                            isSelected = customSet.id == uiState.selectedCustomSetId,
                             onSetClick = { onCustomSetSelect(customSet.id) },
                             onEditClick = {
-                                if (customSet.id != selectedCustomSetId) {
+                                if (customSet.id != uiState.selectedCustomSetId) {
                                     onCustomSetSelect(customSet.id)
                                 }
                                 namingSetId = customSet.id
@@ -246,7 +229,7 @@ fun ExercisesScreen(
                         text = "Create Plan",
                         onClick = {
                             if (selectedCount > 0) {
-                                namingSetId = selectedCustomSetId
+                                namingSetId = uiState.selectedCustomSetId
                                 customSetName = activeCustomSet?.name.orEmpty()
                                 showSetNamingPanel = true
                                 showSelectExercisesMessage = false
@@ -256,22 +239,23 @@ fun ExercisesScreen(
                             }
                         }
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        color = ExercisesCardBackground
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                if (uiState.exercises.isEmpty()) {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            color = ExercisesCardBackground
                         ) {
-                            if (filteredExercises.isEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
                                 Text(
-                                    text = "No exercises found",
+                                    text = if (uiState.isLoading) "Loading exercises..." else "No exercises found",
                                     style = MaterialTheme.typography.bodyLarge.copy(
                                         color = ExercisesText.copy(alpha = 0.75f),
                                         fontWeight = FontWeight.Medium,
@@ -280,14 +264,34 @@ fun ExercisesScreen(
                                     modifier = Modifier.padding(vertical = 20.dp, horizontal = 8.dp)
                                 )
                             }
-                            filteredExercises.forEachIndexed { index, item ->
+                        }
+                    }
+                } else {
+                    itemsIndexed(
+                        items = uiState.exercises,
+                        key = { _, item -> item.id },
+                        contentType = { _, _ -> "exercise" }
+                    ) { index, item ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = exerciseListRowShape(
+                                index = index,
+                                lastIndex = uiState.exercises.lastIndex
+                            ),
+                            color = ExercisesCardBackground
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
                                 ExerciseListRow(
                                     title = item.title,
                                     muscleGroup = item.muscleGroup,
-                                    isSelected = selectedExerciseIds.contains(item.id),
+                                    isSelected = item.isSelected,
                                     onClick = { onExerciseToggle(item.id) }
                                 )
-                                if (index < filteredExercises.lastIndex) {
+                                if (index < uiState.exercises.lastIndex) {
                                     Spacer(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -299,7 +303,6 @@ fun ExercisesScreen(
                         }
                     }
                 }
-
             }
 
             if (selectedCount > 0) {
@@ -338,6 +341,18 @@ fun ExercisesScreen(
                 )
             }
         }
+    }
+}
+
+private fun exerciseListRowShape(
+    index: Int,
+    lastIndex: Int
+): RoundedCornerShape {
+    return when {
+        lastIndex <= 0 -> RoundedCornerShape(10.dp)
+        index == 0 -> RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)
+        index == lastIndex -> RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp)
+        else -> RoundedCornerShape(0.dp)
     }
 }
 
@@ -916,18 +931,15 @@ private fun ExercisesBottomNavItem(
 @Preview(showBackground = true, widthDp = 402, heightDp = 868)
 @Composable
 private fun ExercisesScreenPreview() {
-    val exercises = StartWorkoutFakeStateProvider.defaultExerciseCatalog()
-    val selected = StartWorkoutFakeStateProvider.defaultExerciseSelection()
-
     MaterialTheme {
         ExercisesScreen(
-            title = "Plans",
-            primaryActionVerb = "Start",
-            exercises = exercises,
-            customExerciseSets = emptyList(),
-            selectedCustomSetId = null,
-            selectedExerciseIds = selected,
+            uiState = StartWorkoutPreviewData.defaultSelectExercisesUiState().copy(
+                title = "Plans",
+                primaryActionVerb = "Start"
+            ),
             onBackClick = {},
+            onSearchQueryChange = {},
+            onMuscleGroupSelect = {},
             onExerciseToggle = {},
             onSaveCustomSet = { _, _, _ -> },
             onCustomSetSelect = {},
