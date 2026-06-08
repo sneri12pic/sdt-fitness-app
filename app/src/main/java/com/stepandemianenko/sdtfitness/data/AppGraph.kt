@@ -17,6 +17,8 @@ import com.stepandemianenko.sdtfitness.data.repository.WorkoutSessionRepository
 import com.stepandemianenko.sdtfitness.domain.repository.ProgressRepository
 import com.stepandemianenko.sdtfitness.domain.usecase.GetProgressSnapshotUseCase
 import com.stepandemianenko.sdtfitness.home.HomeRepository
+import com.stepandemianenko.sdtfitness.profile.ProfileRepository
+import com.stepandemianenko.sdtfitness.profile.RoutineReminderScheduler
 
 object AppGraph {
     @Volatile
@@ -42,6 +44,12 @@ object AppGraph {
 
     @Volatile
     private var homeRepository: HomeRepository? = null
+
+    @Volatile
+    private var profileRepository: ProfileRepository? = null
+
+    @Volatile
+    private var routineReminderScheduler: RoutineReminderScheduler? = null
 
     @Volatile
     private var healthConnectManager: HealthConnectManager? = null
@@ -107,6 +115,24 @@ object AppGraph {
                 database = WorkoutDatabase.getInstance(context),
                 accountSessionManager = accountSessionManager(context)
             ).also { homeRepository = it }
+        }
+    }
+
+    fun profileRepository(context: Context): ProfileRepository {
+        return profileRepository ?: synchronized(this) {
+            profileRepository ?: ProfileRepository(
+                database = WorkoutDatabase.getInstance(context),
+                accountSessionManager = accountSessionManager(context),
+                reminderScheduler = routineReminderScheduler(context)
+            ).also { profileRepository = it }
+        }
+    }
+
+    fun routineReminderScheduler(context: Context): RoutineReminderScheduler {
+        return routineReminderScheduler ?: synchronized(this) {
+            routineReminderScheduler ?: RoutineReminderScheduler(
+                appContext = context.applicationContext
+            ).also { routineReminderScheduler = it }
         }
     }
 

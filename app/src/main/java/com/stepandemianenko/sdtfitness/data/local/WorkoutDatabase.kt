@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionExerciseEntity::class,
         SessionSetLogEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 abstract class WorkoutDatabase : RoomDatabase() {
@@ -455,6 +455,17 @@ abstract class WorkoutDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `routineGoalId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `routineFrequencyId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `routineDayIdsCsv` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `routineReminderEnabled` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `routineReminderTimesCsv` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `routineCustomReminderTimesCsv` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): WorkoutDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -470,7 +481,8 @@ abstract class WorkoutDatabase : RoomDatabase() {
                         MIGRATION_5_6,
                         MIGRATION_6_7,
                         MIGRATION_7_8,
-                        MIGRATION_8_9
+                        MIGRATION_8_9,
+                        MIGRATION_9_10
                     )
                     .build()
                     .also { INSTANCE = it }
