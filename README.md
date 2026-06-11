@@ -1,6 +1,18 @@
 # SDT Fitness App
 
-SDT Fitness App is an Android workout tracker built with Kotlin and Jetpack Compose, with a companion Kotlin/Ktor auth API for email/password sign-in and registration. It focuses on simple daily consistency: start a gym session, log sets, add exercises, track daily steps, review completed workouts, and view progress over time.
+SDT Fitness App is a Kotlin Android workout tracker built with Jetpack Compose. It supports a local guest mode for offline use and an optional Kotlin/Ktor authentication API for email/password accounts, refresh-token restore, and account-scoped workout data.
+
+The app is organized around daily consistency: plan a routine, start a session, add exercises, log sets, track steps and weight through Health Connect, review completed workouts, and follow progress over time.
+
+## Current App Surface
+
+- Home dashboard with today's plan, routine calendar, daily quest progress, quick activity logging, rest day logging, and Health Connect step imports.
+- Workout builder with exercise search/filtering, editable targets, custom exercises, and empty-state guidance.
+- Active workout logging with set completion, previous-set feedback, exercise deletion, rest timer flow, and add-exercise support during a session.
+- Progress screens for completed sessions, best lift, total volume, session load, achievements, Health Connect metrics, and per-session review.
+- Profile area for routine setup, reminder scheduling, account controls, and user preferences.
+- Authentication gate with email/password login and registration, refresh-token session restore, saved credential support, guest mode, and sign out.
+- Companion `auth-api` module that implements the Android auth contract for local development or deployment.
 
 ## Screenshots
 
@@ -49,26 +61,14 @@ Current prototype screens from the main app flow.
   </tr>
 </table>
 
-## Features
-
-- Home dashboard with daily goal progress, today's plan, daily step quest, routine calendar, quick log, and rest day logging.
-- Workout flow with an empty-state prompt, exercise search/filtering, custom exercise sets, and active set logging.
-- Active workout tracking with set completion, exercise progress, exercise deletion, and add-exercise support during a session.
-- Progress area with completed sessions, best lift, volume, session load, achievements, and completed-session review.
-- Optional Health Connect integration for reading steps and weight.
-- Local, account-scoped persistence using Room.
-- Authentication gate with email/password registration, login, refresh-token restore, saved password credential support, guest mode, and sign out.
-- Companion `auth-api` service that implements the Android auth contract for local and deployable backend authentication.
-
 ## Tech Stack
 
-- Kotlin
-- Jetpack Compose and Material 3
-- AndroidX Lifecycle and ViewModel
-- Room database with schema exports
-- Health Connect client
-- Kotlin/Ktor auth API with H2 local storage, Flyway migrations, JWT access tokens, refresh-token rotation, and bcrypt password hashing
-- JUnit, AndroidX test, Espresso, and Compose UI testing
+- Kotlin 2.0 and Android Gradle Plugin 8.11.
+- Jetpack Compose, Material 3, AndroidX Lifecycle, ViewModel, and Compose UI tests.
+- Room database with exported schemas under `app/schemas`.
+- Health Connect client for steps and weight.
+- AndroidX Credential Manager for saved credential flows.
+- Kotlin/Ktor auth API with H2 local storage, PostgreSQL support, Flyway migrations, JWT access tokens, refresh-token rotation, bcrypt password hashing, and JUnit 5 tests.
 
 ## Project Structure
 
@@ -76,74 +76,95 @@ Current prototype screens from the main app flow.
 SDTFitnessApp/
 +-- app/
 |   +-- src/main/java/com/stepandemianenko/sdtfitness/
-|   |   +-- auth/          # Auth gate, login/register UI, session repository, secure token storage
-|   |   +-- data/          # Room database, repositories, account/session data
-|   |   +-- home/          # Home dashboard state and UI models
-|   |   +-- progress/      # Progress, session history, and review screens
+|   |   +-- auth/          # Auth gate, login/register UI, session restore, secure token storage
+|   |   +-- data/          # App graph, Room database, repositories, account/session data, Health Connect
+|   |   +-- domain/        # Domain models, repository contracts, use cases
+|   |   +-- home/          # Home dashboard state and repositories
+|   |   +-- profile/       # Profile state, routine reminders, user settings
+|   |   +-- progress/      # Progress, completed sessions, charts, and session review screens
 |   |   +-- quicklog/      # Quick activity logging
-|   |   +-- startworkout/  # Workout setup, exercise picker, active workout flow
+|   |   +-- startworkout/  # Workout setup, exercise picker, active workout flow, rest timer
+|   |   +-- ui/            # Theme and shared UI components
 |   +-- schemas/           # Room schema exports
 +-- auth-api/
 |   +-- src/main/kotlin/   # Ktor authentication service
 |   +-- src/main/resources/db/migration/
-|   +-- README.md          # API contract and local HTTPS tunnel workflow
-+-- docs/
-|   +-- images/readme/     # README screenshots
-+-- gradle/
-    +-- libs.versions.toml # Version catalog
+|   +-- README.md          # API contract, environment variables, curl examples, tunnel setup
++-- docs/images/readme/    # README screenshots
++-- gradle/libs.versions.toml
 ```
 
-## Getting Started
+## Requirements
 
-1. Open the project root in Android Studio.
-2. Let Gradle sync install the Android Gradle Plugin, Kotlin, Compose, Room, and Health Connect dependencies.
-3. Select the `app` run configuration.
-4. Run the app on an emulator or physical Android device.
+- Android Studio with JDK 17 available for Gradle.
+- Android SDK 36 installed.
+- Emulator or physical device running Android 9.0 or newer, because `minSdk` is 28.
+- Optional: Health Connect installed and permissions granted for steps and weight.
+- Optional for remote auth testing: `cloudflared`, ngrok, or another HTTPS tunnel.
 
-The app targets SDK 36 and has a minimum SDK of 28.
+## Run The Android App
 
-The app can be used as a local guest without the auth API. To test registration and login, start the local API and expose it through HTTPS, then build the Android app with `SDT_AUTH_BASE_URL`.
+Open the project root in Android Studio, let Gradle sync, select the `app` run configuration, and run it on an emulator or device.
 
-In one terminal:
+The app can be used immediately as a local guest. Guest and authenticated account data are stored locally with Room and are scoped per account.
 
-```powershell
-.\gradlew.bat :auth-api:run
-```
-
-In a second terminal:
-
-```powershell
-cloudflared tunnel --url http://localhost:8080
-```
-
-Then install the app with the generated HTTPS tunnel URL:
-
-```powershell
-.\gradlew.bat :app:installDebug -PSDT_AUTH_BASE_URL=https://your-tunnel-url.trycloudflare.com
-```
-
-See `auth-api/README.md` for the full auth API contract, environment variables, curl examples, and Cloudflare Tunnel setup.
-
-## Useful Commands
-
-Run these from the project root:
+From PowerShell, useful local commands are:
 
 ```powershell
 .\gradlew.bat :app:assembleDebug
 .\gradlew.bat :app:testDebugUnitTest
 .\gradlew.bat :app:connectedDebugAndroidTest
-.\gradlew.bat :auth-api:test
+```
+
+## Run With The Auth API
+
+The Android client only uses the auth API when `SDT_AUTH_BASE_URL` is supplied at build time. The URL must be HTTPS for emulator/device auth testing.
+
+Start the local API:
+
+```powershell
 .\gradlew.bat :auth-api:run
 ```
 
-## Health Connect
+In another terminal, expose it through HTTPS:
 
-The app declares Health Connect permissions for reading steps and weight. On a device, Health Connect availability and permission grants determine whether imported health data can be shown or synced into the daily quest/progress surfaces.
+```powershell
+cloudflared tunnel --url http://localhost:8080
+```
 
-## Notes
+Install the debug app with the generated tunnel URL:
 
-- Workout and settings data are stored locally with Room.
-- The debug build includes account tools for creating test users, switching accounts, and wiping current-account data.
-- Authentication links remote users to local Room accounts without deleting guest workout data.
+```powershell
+.\gradlew.bat :app:installDebug -PSDT_AUTH_BASE_URL=https://your-tunnel-url.trycloudflare.com
+```
+
+If the tunnel URL changes, rebuild and reinstall the app with the new `SDT_AUTH_BASE_URL`, because the value is compiled into `BuildConfig.AUTH_BASE_URL`.
+
+See [auth-api/README.md](auth-api/README.md) for the full endpoint contract, environment variables, curl examples, and production database settings.
+
+## Auth API Commands
+
+```powershell
+.\gradlew.bat :auth-api:test
+.\gradlew.bat :auth-api:run
+Invoke-RestMethod http://localhost:8080/health
+```
+
+Local API defaults use H2 under `auth-api/build`. Production-style runs should provide PostgreSQL settings, JWT secret, refresh-token pepper, allowed origins, and port through environment variables documented in [auth-api/README.md](auth-api/README.md).
+
+## Data And Health Connect
+
+- Workout sessions, exercise plans, accounts, user settings, daily quest records, and creatine intake logs are persisted with Room.
+- Room schema exports live under `app/schemas/com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase`.
+- Health Connect imports today's steps and recent weight history when the provider is available and the user grants the requested permissions.
+- Remote auth links server users to local Room accounts without deleting guest workout history.
 - Refresh tokens are stored through secure local session storage; passwords are never stored in Room.
-- Room schemas are exported under `app/schemas` to support migration testing.
+
+## Development Notes
+
+- Main Android package: `com.stepandemianenko.sdtfitness`.
+- Main modules: `:app` and `:auth-api`.
+- Android target SDK: 36.
+- Android minimum SDK: 28.
+- Keep auth API field names aligned with `RemoteAuthDataSource`; the Android client expects the current response contract exactly.
+- Keep Room schemas committed when database entities or migrations change.
