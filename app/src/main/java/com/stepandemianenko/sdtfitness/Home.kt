@@ -48,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -426,6 +427,8 @@ fun HomeOneScreen(
                     isCreatineIntakeAdded = uiState.dashboard.creatineIntakeQuest.isAdded,
                     onAddWeightInQuest = onAddWeightInQuest,
                     onAddCreatineIntakeQuest = onAddCreatineIntakeQuest,
+                    onRemoveWeightInQuest = onRemoveWeightInQuest,
+                    onRemoveCreatineIntakeQuest = onRemoveCreatineIntakeQuest,
                     onDismiss = onDismissAddCustomQuestDialog
                 )
             }
@@ -1281,8 +1284,18 @@ private fun DailyQuestEditorDialog(
     onDismiss: () -> Unit,
     onSave: () -> Unit
 ) {
+    val stepsTextFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = PrimaryText,
+        unfocusedTextColor = PrimaryText,
+        cursorColor = ActionColor,
+        focusedBorderColor = ActionColor,
+        unfocusedBorderColor = SecondaryText.copy(alpha = 0.45f),
+        focusedLabelColor = ActionColor,
+        unfocusedLabelColor = SecondaryText
+    )
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = CardBackground,
         title = {
             Text(
                 text = "Daily Quest Steps",
@@ -1297,25 +1310,35 @@ private fun DailyQuestEditorDialog(
                     onValueChange = onTargetStepsChanged,
                     label = { Text("Target steps") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = stepsTextFieldColors
                 )
                 OutlinedTextField(
                     value = currentStepsValue,
                     onValueChange = onCurrentStepsChanged,
                     label = { Text("Current steps") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = stepsTextFieldColors
                 )
             }
         },
         confirmButton = {
             TextButton(onClick = onSave) {
-                Text("Save")
+                Text(
+                    text = "Save",
+                    color = PrimaryText,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(
+                    text = "Cancel",
+                    color = ActionColor,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     )
@@ -1327,6 +1350,8 @@ private fun AddCustomQuestDialog(
     isCreatineIntakeAdded: Boolean,
     onAddWeightInQuest: () -> Unit,
     onAddCreatineIntakeQuest: () -> Unit,
+    onRemoveWeightInQuest: () -> Unit,
+    onRemoveCreatineIntakeQuest: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -1347,6 +1372,7 @@ private fun AddCustomQuestDialog(
                     subtitle = "Weigh yourself today",
                     isAdded = isWeightInAdded,
                     onAddClick = onAddWeightInQuest,
+                    onRemoveClick = onRemoveWeightInQuest,
                     icon = { CircleIconContainer(iconRes = R.drawable.orange_scales) }
                 )
                 SuggestedQuestRow(
@@ -1354,6 +1380,7 @@ private fun AddCustomQuestDialog(
                     subtitle = "Track today's creatine portions",
                     isAdded = isCreatineIntakeAdded,
                     onAddClick = onAddCreatineIntakeQuest,
+                    onRemoveClick = onRemoveCreatineIntakeQuest,
                     icon = { CreatineIconContainer() }
                 )
                 DialogSectionLabel(text = "Custom Quests")
@@ -1748,6 +1775,7 @@ private fun SuggestedQuestRow(
     subtitle: String,
     isAdded: Boolean,
     onAddClick: () -> Unit,
+    onRemoveClick: () -> Unit,
     icon: @Composable () -> Unit
 ) {
     Row(
@@ -1778,10 +1806,10 @@ private fun SuggestedQuestRow(
         Spacer(modifier = Modifier.width(8.dp))
         if (isAdded) {
             QuestStatusPill(
-                text = "Added",
+                text = "Remove",
                 backgroundColor = SoftGreen,
                 textColor = PrimaryText,
-                onClick = null
+                onClick = onRemoveClick
             )
         } else {
             Button(
