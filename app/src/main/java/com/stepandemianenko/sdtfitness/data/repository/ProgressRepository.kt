@@ -54,6 +54,18 @@ data class CompletedSessionReview(
     val exercises: List<SessionExerciseReview>
 )
 
+data class ExerciseTrendPoint(
+    val completedAtMillis: Long,
+    val maxWeightKg: Int,
+    val maxReps: Int
+)
+
+data class ExerciseTrend(
+    val exerciseId: String,
+    val exerciseName: String,
+    val points: List<ExerciseTrendPoint>
+)
+
 class ProgressRepositoryImpl(
     private val database: WorkoutDatabase,
     private val accountSessionManager: AccountSessionManager,
@@ -215,6 +227,38 @@ class ProgressRepositoryImpl(
             completedAtMillis = session.completedAt ?: session.startedAt,
             exercises = exerciseReviews
         )
+    }
+
+    override suspend fun getExerciseTrends(sessionId: Long): List<ExerciseTrend> {
+        val accountId = accountSessionManager.requireActiveAccountId()
+        val session = sessionDao.getById(accountId = accountId, sessionId = sessionId) ?: return emptyList()
+        if (session.status != WorkoutSessionStatus.COMPLETED) return emptyList()
+
+        val exercises = exerciseDao.getForSession(accountId = accountId, sessionId = sessionId)
+            .sortedBy { it.exerciseOrder }
+
+        // One entry per distinct exercise in the reviewed session (preserve order, drop duplicates).
+        val seenExerciseIds = mutableSetOf<String>()
+        return exercises
+            .filter { seenExerciseIds.add(it.exerciseId) }
+            .map { exercise ->
+                val trendRows = setLogDao.getExerciseSessionTrend(
+                    accountId = accountId,
+                    exerciseId = exercise.exerciseId,
+                    completedStatus = WorkoutSessionStatus.COMPLETED
+                )
+                ExerciseTrend(
+                    exerciseId = exercise.exerciseId,
+                    exerciseName = exercise.exerciseName,
+                    points = trendRows.map { row ->
+                        ExerciseTrendPoint(
+                            completedAtMillis = row.completedAtMillis,
+                            maxWeightKg = row.maxWeightKg,
+                            maxReps = row.maxReps
+                        )
+                    }
+                )
+            }
     }
 
     private fun calculateStreakDays(days: List<LocalDate>): Int {

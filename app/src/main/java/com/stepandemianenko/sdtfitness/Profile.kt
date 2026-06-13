@@ -1,13 +1,21 @@
 package com.stepandemianenko.sdtfitness
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -19,30 +27,39 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -65,11 +83,18 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
 import com.stepandemianenko.sdtfitness.auth.ui.AuthGateActivity
 import com.stepandemianenko.sdtfitness.data.AppGraph
+import com.stepandemianenko.sdtfitness.profile.ProfileUiEvent
+import com.stepandemianenko.sdtfitness.profile.ProfileViewModel
+import com.stepandemianenko.sdtfitness.profile.ReminderTimeTarget
+import com.stepandemianenko.sdtfitness.profile.RoutineSettings
+import com.stepandemianenko.sdtfitness.profile.parseReminderTime
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.Image
 
 class Profile : ComponentActivity() {
@@ -199,33 +224,63 @@ private val RoutineDayOptions = listOf(
     RoutineSelectableOption(id = "sun", label = "Sun")
 )
 
-private val RoutineReminderOptions = listOf(
-    RoutineSelectableOption(id = "morning", label = "Morning"),
-    RoutineSelectableOption(id = "afternoon", label = "Afternoon"),
-    RoutineSelectableOption(id = "evening", label = "Evening"),
-    RoutineSelectableOption(id = "none", label = "No reminders")
+private data class ReminderPreset(
+    val time: String,
+    val label: String
 )
+
+private val ReminderPresets = listOf(
+    ReminderPreset(time = "07:00", label = "Morning"),
+    ReminderPreset(time = "12:00", label = "Midday"),
+    ReminderPreset(time = "18:00", label = "Evening"),
+    ReminderPreset(time = "21:00", label = "Night")
+)
+
+private fun reminderPresetLabel(time: String): String {
+    return ReminderPresets.firstOrNull { it.time == time }?.label ?: "Reminder"
+}
+
+private fun displayTime(time: String): String {
+    val parsed = parseReminderTime(time) ?: return time
+    val (hour, minute) = parsed
+    val period = if (hour < 12) "AM" else "PM"
+    val displayHour = when {
+        hour == 0 -> 12
+        hour > 12 -> hour - 12
+        else -> hour
+    }
+    return displayHour.toString() + ":" + minute.toString().padStart(2, '0') + " " + period
+}
 
 @Composable
 fun ProfileRoute(
     onHomeClick: () -> Unit = {},
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
-    onSignOutClick: () -> Unit = {}
+    onSignOutClick: () -> Unit = {},
+    viewModel: ProfileViewModel = viewModel()
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {}
     var activeScreen by rememberSaveable { mutableStateOf(ProfileScreen.Overview) }
 
-    var selectedGoalId by remember { mutableStateOf(RoutineGoalOptions.first().id) }
-    var selectedFrequencyId by remember { mutableStateOf("3_days") }
-    var selectedDayIds by remember { mutableStateOf(setOf("wed")) }
-    var selectedReminderId by remember { mutableStateOf("evening") }
     var isSettingsDialogOpen by rememberSaveable { mutableStateOf(false) }
     var isSignOutDialogOpen by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = activeScreen != ProfileScreen.Overview) {
         activeScreen = ProfileScreen.Overview
+    }
+
+    LaunchedEffect(uiState.saveMessage) {
+        val message = uiState.saveMessage
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.onEvent(ProfileUiEvent.ClearSaveMessage)
+        }
     }
 
     Surface(
@@ -264,27 +319,30 @@ fun ProfileRoute(
 
                             ProfileScreen.YourRoutine -> RoutineSetupContent(
                                 title = "Your routine",
-                                subtitle = "Choose a plan that fits your week",
+                                subtitle = "Shape a plan that fits your life — you're free to change it anytime",
                                 showBackButton = true,
                                 onBackClick = { activeScreen = ProfileScreen.Overview },
-                                selectedGoalId = selectedGoalId,
-                                selectedFrequencyId = selectedFrequencyId,
-                                selectedDayIds = selectedDayIds,
-                                selectedReminderId = selectedReminderId,
-                                onGoalSelected = { selectedGoalId = it },
-                                onFrequencySelected = { selectedFrequencyId = it },
-                                onDayToggled = { dayId ->
-                                    selectedDayIds = if (selectedDayIds.contains(dayId)) {
-                                        selectedDayIds - dayId
-                                    } else {
-                                        selectedDayIds + dayId
-                                    }
-                                },
-                                onReminderSelected = { selectedReminderId = it },
+                                routine = uiState.draftRoutine,
+                                onGoalSelected = { viewModel.onEvent(ProfileUiEvent.SelectGoal(it)) },
+                                onFrequencySelected = { viewModel.onEvent(ProfileUiEvent.SelectFrequency(it)) },
+                                onDayToggled = { viewModel.onEvent(ProfileUiEvent.ToggleDay(it)) },
+                                onRemindersEnabledToggled = { viewModel.onEvent(ProfileUiEvent.ToggleRemindersEnabled) },
+                                onPresetReminderToggled = { viewModel.onEvent(ProfileUiEvent.TogglePresetReminder(it)) },
+                                onPresetReminderLongPressed = { viewModel.onEvent(ProfileUiEvent.OpenPresetTimePicker(it)) },
+                                onAddCustomReminderClick = { viewModel.onEvent(ProfileUiEvent.OpenCustomTimePicker) },
+                                onRemoveCustomReminder = { viewModel.onEvent(ProfileUiEvent.RemoveCustomReminder(it)) },
                                 onSaveRoutineClick = {
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("Routine saved.")
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                        uiState.draftRoutine.reminderEnabled &&
+                                        uiState.draftRoutine.allReminderTimes.isNotEmpty() &&
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.POST_NOTIFICATIONS
+                                        ) != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                     }
+                                    viewModel.onEvent(ProfileUiEvent.SaveRoutine)
                                 },
                                 onSkipForNowClick = { activeScreen = ProfileScreen.Overview }
                             )
@@ -324,6 +382,18 @@ fun ProfileRoute(
                     onConfirm = {
                         isSignOutDialogOpen = false
                         onSignOutClick()
+                    }
+                )
+            }
+
+            if (uiState.isTimePickerOpen) {
+                ReminderTimePickerDialog(
+                    initialHour = uiState.timePickerInitialHour,
+                    initialMinute = uiState.timePickerInitialMinute,
+                    isCustom = uiState.timePickerTarget is ReminderTimeTarget.Custom,
+                    onDismiss = { viewModel.onEvent(ProfileUiEvent.DismissTimePicker) },
+                    onConfirm = { hour, minute ->
+                        viewModel.onEvent(ProfileUiEvent.SavePickedTime(hour = hour, minute = minute))
                     }
                 )
             }
@@ -481,19 +551,23 @@ fun RoutineSetupContent(
     subtitle: String,
     showBackButton: Boolean,
     onBackClick: () -> Unit,
-    selectedGoalId: String,
-    selectedFrequencyId: String,
-    selectedDayIds: Set<String>,
-    selectedReminderId: String,
+    routine: RoutineSettings,
     onGoalSelected: (String) -> Unit,
     onFrequencySelected: (String) -> Unit,
     onDayToggled: (String) -> Unit,
-    onReminderSelected: (String) -> Unit,
+    onRemindersEnabledToggled: () -> Unit,
+    onPresetReminderToggled: (String) -> Unit,
+    onPresetReminderLongPressed: (String) -> Unit,
+    onAddCustomReminderClick: () -> Unit,
+    onRemoveCustomReminder: (String) -> Unit,
     onSaveRoutineClick: () -> Unit,
     onSkipForNowClick: () -> Unit,
     saveActionLabel: String = "Save Routine",
     skipActionLabel: String = "Skip for now"
 ) {
+    val selectedGoalId = routine.goalId
+    val selectedFrequencyId = routine.frequencyId
+    val selectedDayIds = routine.dayIds
     if (showBackButton) {
         BackRow(
             label = "Back",
@@ -641,33 +715,117 @@ fun RoutineSetupContent(
     }
 
     SectionContainer {
-        Text(
-            text = "When should we remind you?",
-            color = ProfilePrimaryText,
-            fontSize = 22.sp,
-            lineHeight = 24.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RoutineReminderOptions.forEach { option ->
-                SelectionChip(
-                    label = option.label,
-                    selected = selectedReminderId == option.id,
-                    onClick = { onReminderSelected(option.id) },
-                    modifier = Modifier.weight(1f),
-                    role = Role.RadioButton
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Want a gentle nudge?",
+                    color = ProfilePrimaryText,
+                    fontSize = 22.sp,
+                    lineHeight = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Reminders are entirely optional — turn them on or off whenever it suits you",
+                    color = ProfileSecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp
                 )
             }
+            Switch(
+                checked = routine.reminderEnabled,
+                onCheckedChange = { onRemindersEnabledToggled() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color(0xFFFFF2E9),
+                    checkedTrackColor = ProfileAccent,
+                    uncheckedTrackColor = Color(0xFFF1D3C8)
+                )
+            )
         }
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            text = "We'll send at most one reminder on your planned days",
-            color = ProfileSecondaryText,
-            fontSize = 13.sp,
-            lineHeight = 16.sp
-        )
+
+        if (routine.reminderEnabled) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = "Pick the times that work for you",
+                color = ProfileSecondaryText,
+                fontSize = 14.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            val displayedPresetTimes = (ReminderPresets.map { it.time } + routine.reminderTimes)
+                .distinct()
+                .sorted()
+            displayedPresetTimes.chunked(2).forEach { rowTimes ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowTimes.forEach { time ->
+                        ReminderTimeChip(
+                            label = reminderPresetLabel(time),
+                            timeText = displayTime(time),
+                            selected = routine.reminderTimes.contains(time),
+                            onClick = { onPresetReminderToggled(time) },
+                            onLongClick = { onPresetReminderLongPressed(time) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (rowTimes.size < 2) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            Text(
+                text = "Tap a time to use it, or hold it down to set your own",
+                color = ProfileSecondaryText,
+                fontSize = 12.sp,
+                lineHeight = 14.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Your own custom times",
+                color = ProfileSecondaryText,
+                fontSize = 14.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (routine.customReminderTimes.isEmpty()) {
+                Text(
+                    text = "No custom times yet — add one if the presets don't fit your day",
+                    color = ProfileSecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    routine.customReminderTimes.forEach { time ->
+                        CustomReminderRow(
+                            timeText = displayTime(time),
+                            onRemoveClick = { onRemoveCustomReminder(time) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            AddCustomReminderButton(onClick = onAddCustomReminderClick)
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "We'll send at most one reminder on your planned days — you're always in control",
+                color = ProfileSecondaryText,
+                fontSize = 13.sp,
+                lineHeight = 16.sp
+            )
+        }
     }
 
     PrimaryActionButton(
@@ -888,6 +1046,240 @@ private fun SelectionChip(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ReminderTimeChip(
+    label: String,
+    timeText: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) ProfileAccent else Color(0xFFF1D3C8))
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) ProfilePrimaryText.copy(alpha = 0.34f) else Color.Transparent,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .semantics {
+                this.role = Role.Checkbox
+                this.selected = selected
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color(0xFFFFF2E9) else ProfilePrimaryText,
+            fontSize = 13.sp,
+            lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = timeText,
+            color = if (selected) Color(0xFFFFF2E9) else ProfileSecondaryText,
+            fontSize = 12.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun CustomReminderRow(
+    timeText: String,
+    onRemoveClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFF1D3C8))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = timeText,
+            color = ProfilePrimaryText,
+            fontSize = 15.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        IconButton(onClick = onRemoveClick) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Remove this reminder time",
+                tint = ProfileSecondaryText
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddCustomReminderButton(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(
+                width = 1.dp,
+                color = ProfileAccent,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Add,
+            contentDescription = null,
+            tint = ProfileAccent,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "Add a time that works for you",
+            color = ProfileAccent,
+            fontSize = 14.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun ReminderTimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    isCustom: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (hour: Int, minute: Int) -> Unit
+) {
+    var selectedHour by rememberSaveable(initialHour) { mutableStateOf(initialHour.coerceIn(0, 23)) }
+    var selectedMinute by rememberSaveable(initialMinute) { mutableStateOf(initialMinute.coerceIn(0, 59)) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ProfileCardBackground,
+        title = {
+            Text(
+                text = if (isCustom) "Add your own reminder time" else "Set this reminder's time",
+                color = ProfilePrimaryText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Scroll to choose a time that fits — it's your call",
+                    color = ProfileSecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    TimePickerColumn(
+                        title = "Hour",
+                        values = (0..23).toList(),
+                        selectedValue = selectedHour,
+                        valueFormatter = { it.toString().padStart(2, '0') },
+                        onValueSelected = { selectedHour = it },
+                        modifier = Modifier.weight(1f)
+                    )
+                    TimePickerColumn(
+                        title = "Minute",
+                        values = (0..59).toList(),
+                        selectedValue = selectedMinute,
+                        valueFormatter = { it.toString().padStart(2, '0') },
+                        onValueSelected = { selectedMinute = it },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedHour, selectedMinute) }) {
+                Text(
+                    text = "Use this time",
+                    color = ProfileAccent,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = ProfileSecondaryText)
+            }
+        }
+    )
+}
+
+@Composable
+private fun TimePickerColumn(
+    title: String,
+    values: List<Int>,
+    selectedValue: Int,
+    valueFormatter: (Int) -> String,
+    onValueSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = title,
+            color = ProfileSecondaryText,
+            fontSize = 13.sp,
+            lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 180.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFFFEFE5)),
+            contentPadding = PaddingValues(vertical = 4.dp)
+        ) {
+            items(values) { value ->
+                val selected = value == selectedValue
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (selected) ProfileAccent else Color.Transparent)
+                        .clickable { onValueSelected(value) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = valueFormatter(value),
+                        color = if (selected) Color(0xFFFFF2E9) else ProfilePrimaryText,
+                        fontSize = 16.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun PrimaryActionButton(
     label: String,
@@ -969,8 +1361,8 @@ private fun ProfileBottomNavigationBar(
             )
             ProfileBottomNavItem(
                 label = "Profile",
-                icon = R.drawable.home_nav_profile,
-                textColor = ProfileInactiveIcon,
+                icon = R.drawable.profile_active,
+                textColor = ProfileAccent,
                 onClick = onProfileClick
             )
         }

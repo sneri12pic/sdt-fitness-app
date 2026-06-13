@@ -106,6 +106,12 @@ data class UserSettingsEntity(
     @ColumnInfo(defaultValue = "0") val creatineQuestEnabled: Boolean = false,
     @ColumnInfo(defaultValue = "5") val creatineTargetGrams: Int = 5,
     @ColumnInfo(defaultValue = "5") val creatinePortionGrams: Int = 5,
+    @ColumnInfo(defaultValue = "") val routineGoalId: String = "",
+    @ColumnInfo(defaultValue = "") val routineFrequencyId: String = "",
+    @ColumnInfo(defaultValue = "") val routineDayIdsCsv: String = "",
+    @ColumnInfo(defaultValue = "1") val routineReminderEnabled: Boolean = true,
+    @ColumnInfo(defaultValue = "") val routineReminderTimesCsv: String = "",
+    @ColumnInfo(defaultValue = "") val routineCustomReminderTimesCsv: String = "",
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,
@@ -370,6 +376,13 @@ data class ExerciseSetResultRow(
     val actualWeightKg: Int,
     val actualReps: Int,
     val completedAt: Long
+)
+
+data class ExerciseSessionTrendRow(
+    val sessionId: Long,
+    val completedAtMillis: Long,
+    val maxWeightKg: Int,
+    val maxReps: Int
 )
 
 data class ProgressTotalsRow(

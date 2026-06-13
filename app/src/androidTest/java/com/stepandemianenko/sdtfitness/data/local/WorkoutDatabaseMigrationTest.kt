@@ -140,7 +140,8 @@ class WorkoutDatabaseMigrationTest {
                 WorkoutDatabase.MIGRATION_5_6,
                 WorkoutDatabase.MIGRATION_6_7,
                 WorkoutDatabase.MIGRATION_7_8,
-                WorkoutDatabase.MIGRATION_8_9
+                WorkoutDatabase.MIGRATION_8_9,
+                WorkoutDatabase.MIGRATION_9_10
             )
             .build()
 
@@ -170,6 +171,12 @@ class WorkoutDatabaseMigrationTest {
         assertEquals(false, migratedSettings?.creatineQuestEnabled)
         assertEquals(5, migratedSettings?.creatineTargetGrams)
         assertEquals(5, migratedSettings?.creatinePortionGrams)
+        assertEquals("", migratedSettings?.routineGoalId)
+        assertEquals("", migratedSettings?.routineFrequencyId)
+        assertEquals("", migratedSettings?.routineDayIdsCsv)
+        assertEquals(true, migratedSettings?.routineReminderEnabled)
+        assertEquals("", migratedSettings?.routineReminderTimesCsv)
+        assertEquals("", migratedSettings?.routineCustomReminderTimesCsv)
         assertEquals(120, db.exerciseCatalogDao().count())
 
         val now = System.currentTimeMillis()

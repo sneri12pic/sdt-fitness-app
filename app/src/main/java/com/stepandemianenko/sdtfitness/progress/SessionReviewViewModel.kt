@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.data.repository.CompletedSessionReview
+import com.stepandemianenko.sdtfitness.data.repository.ExerciseTrend
 import com.stepandemianenko.sdtfitness.data.repository.SessionExerciseReview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,8 +57,14 @@ class SessionReviewViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
             runCatching {
-                repository.getCompletedSessionReview(sessionId)
-            }.onSuccess { review ->
+                val review = repository.getCompletedSessionReview(sessionId)
+                val trends = if (review != null) {
+                    repository.getExerciseTrends(sessionId)
+                } else {
+                    emptyList()
+                }
+                review to trends
+            }.onSuccess { (review, trends) ->
                 if (review == null) {
                     _uiState.update {
                         it.copy(
@@ -66,12 +73,15 @@ class SessionReviewViewModel(
                         )
                     }
                 } else {
+                    val trendsByExerciseId = trends.associateBy { it.exerciseId }
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             title = resolveSessionTitle(review),
                             dateLabel = formatDate(review.completedAtMillis),
-                            exercises = review.exercises.map(::toExerciseUiModel),
+                            exercises = review.exercises.map { exercise ->
+                                toExerciseUiModel(exercise, trendsByExerciseId[exercise.exerciseId])
+                            },
                             errorMessage = null
                         )
                     }
@@ -87,10 +97,10 @@ class SessionReviewViewModel(
         }
     }
 
-    private fun toExerciseUiModel(exercise: SessionExerciseReview): SessionExerciseReviewUiModel {
-        val weightValues = exercise.sets.map { it.actualWeightKg.toFloat() }
-        val repsValues = exercise.sets.map { it.actualReps.toFloat() }
-
+    private fun toExerciseUiModel(
+        exercise: SessionExerciseReview,
+        trend: ExerciseTrend?
+    ): SessionExerciseReviewUiModel {
         val setRows = exercise.sets.map { set ->
             SessionSetRowUiModel(
                 setLabel = "Set ${set.setNumber}",
@@ -99,22 +109,37 @@ class SessionReviewViewModel(
             )
         }
 
+        // Cross-session trend: one point per completed session that included this exercise,
+        // ordered chronologically (the repository already sorts ascending by completion date).
+        val trendPoints = trend?.points.orEmpty()
+        val timestamps = trendPoints.map { it.completedAtMillis }
+        val weightValues = trendPoints.map { it.maxWeightKg.toFloat() }
+        val repsValues = trendPoints.map { it.maxReps.toFloat() }
+
+        // Per-set values for the reviewed session, powering the most zoomed-in "Session" view.
+        val sessionWeightValues = exercise.sets.map { it.actualWeightKg.toFloat() }
+        val sessionRepsValues = exercise.sets.map { it.actualReps.toFloat() }
+
         return SessionExerciseReviewUiModel(
             exerciseName = exercise.exerciseName,
             sets = setRows,
             weightChart = SetMetricChartUiModel(
-                title = "Weight across sets",
-                actualLabel = "Actual weight",
+                title = "Weight trend",
+                actualLabel = "Heaviest set",
                 actualValues = weightValues,
                 targetValues = List(weightValues.size) { null },
-                unitLabel = "kg"
+                unitLabel = "kg",
+                pointTimestampsMillis = timestamps,
+                sessionSetValues = sessionWeightValues
             ),
             repsChart = SetMetricChartUiModel(
-                title = "Reps across sets",
-                actualLabel = "Actual reps",
+                title = "Reps trend",
+                actualLabel = "Best set reps",
                 actualValues = repsValues,
                 targetValues = List(repsValues.size) { null },
-                unitLabel = "reps"
+                unitLabel = "reps",
+                pointTimestampsMillis = timestamps,
+                sessionSetValues = sessionRepsValues
             )
         )
     }

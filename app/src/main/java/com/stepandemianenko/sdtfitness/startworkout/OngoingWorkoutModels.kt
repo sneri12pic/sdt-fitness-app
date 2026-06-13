@@ -72,8 +72,7 @@ data class WorkoutSetUiModel(
     val isCompletionEnabled: Boolean,
     val activeFeedbackVisible: Boolean,
     val feedbackMessage: String?,
-    val selectedRpe: Int?,
-    val suggestedNextWeight: Int?
+    val selectedRpe: Int?
 )
 
 @Immutable
@@ -183,8 +182,7 @@ object LogWorkoutFakeStateProvider {
                         isCompletionEnabled = false,
                         activeFeedbackVisible = false,
                         feedbackMessage = null,
-                        selectedRpe = null,
-                        suggestedNextWeight = null
+                        selectedRpe = null
                     ),
                     WorkoutSetUiModel(
                         id = "101:2",
@@ -196,8 +194,7 @@ object LogWorkoutFakeStateProvider {
                         isCompletionEnabled = false,
                         activeFeedbackVisible = false,
                         feedbackMessage = null,
-                        selectedRpe = null,
-                        suggestedNextWeight = null
+                        selectedRpe = null
                     ),
                     WorkoutSetUiModel(
                         id = "101:3",
@@ -209,8 +206,7 @@ object LogWorkoutFakeStateProvider {
                         isCompletionEnabled = true,
                         activeFeedbackVisible = false,
                         feedbackMessage = null,
-                        selectedRpe = null,
-                        suggestedNextWeight = null
+                        selectedRpe = null
                     )
                 )
             ),
@@ -232,8 +228,7 @@ object LogWorkoutFakeStateProvider {
                         isCompletionEnabled = false,
                         activeFeedbackVisible = false,
                         feedbackMessage = null,
-                        selectedRpe = null,
-                        suggestedNextWeight = null
+                        selectedRpe = null
                     ),
                     WorkoutSetUiModel(
                         id = "102:2",
@@ -245,8 +240,7 @@ object LogWorkoutFakeStateProvider {
                         isCompletionEnabled = false,
                         activeFeedbackVisible = false,
                         feedbackMessage = null,
-                        selectedRpe = null,
-                        suggestedNextWeight = null
+                        selectedRpe = null
                     )
                 )
             )
@@ -277,8 +271,7 @@ object LogWorkoutFakeStateProvider {
                         isCompleted = true,
                         activeFeedbackVisible = true,
                         feedbackMessage = "Nice - matched previous set",
-                        selectedRpe = 5,
-                        suggestedNextWeight = 45
+                        selectedRpe = 5
                     )
                 }
             )
