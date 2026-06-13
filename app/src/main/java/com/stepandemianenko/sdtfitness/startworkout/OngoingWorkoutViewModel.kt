@@ -224,13 +224,10 @@ class LogWorkoutViewModel(
                         setNumber = setNumber
                     )
                 ) {
-                    val exerciseKeyPrefix = "$exerciseId:"
-                    selectedRpeBySet = selectedRpeBySet.filterKeys { key ->
-                        !key.startsWith(exerciseKeyPrefix)
-                    }
-                    feedbackMessageBySet = feedbackMessageBySet.filterKeys { key ->
-                        !key.startsWith(exerciseKeyPrefix)
-                    }
+                    // Only clear transient state for the set that was un-completed; the other
+                    // completed sets stay in place and keep their RPE/feedback.
+                    selectedRpeBySet = selectedRpeBySet - setKey
+                    feedbackMessageBySet = feedbackMessageBySet - setKey
                     pendingSuggestedWeightByExercise = pendingSuggestedWeightByExercise - exerciseId
                     if (activeFeedbackSetKey == setKey) {
                         activeFeedbackSetKey = null
@@ -262,6 +259,7 @@ class LogWorkoutViewModel(
             val outcome = repository.logSetForExercise(
                 sessionId = snapshot.sessionId,
                 sessionExerciseId = exercise.id,
+                setNumber = setNumber,
                 actualWeightKg = loggedWeight,
                 actualReps = loggedReps,
                 rpe = selectedRpe
@@ -273,15 +271,8 @@ class LogWorkoutViewModel(
                 scheduleFeedbackAutoDismiss(setKey)
                 rebuildUiState()
             }
-
-            if (outcome is LogSetOutcome.SessionCompleted) {
-                completionEffectSessionId = outcome.sessionId
-                syncCompletedWorkoutWithHome(
-                    startedAt = snapshot.startedAt,
-                    completedAt = System.currentTimeMillis()
-                )
-                _effects.emit(LogWorkoutEffect.NavigateToProgress(outcome.sessionId))
-            }
+            // Session completion is detected by the snapshot observer in attachSession(); logging a
+            // set never reports it directly.
         }
     }
 
@@ -921,8 +912,7 @@ class LogWorkoutViewModel(
                 isCompletionEnabled = logged == null && setNumber == nextSetNumberForExercise,
                 activeFeedbackVisible = activeFeedbackSetKey == setKey && logged != null,
                 feedbackMessage = feedbackMessageBySet[setKey],
-                selectedRpe = selectedRpe,
-                suggestedNextWeight = null
+                selectedRpe = selectedRpe
             )
         }
 
@@ -946,7 +936,10 @@ class LogWorkoutViewModel(
         val exercise = snapshot.exercises.firstOrNull { it.id == exerciseId } ?: return 1
         val totalSets = exercise.targetSets.coerceAtLeast(0)
         if (totalSets == 0) return 0
-        return (exercise.loggedSets.size + 1).coerceIn(1, totalSets)
+        // Sets can be un-completed out of order, leaving a gap, so the next pending set is the
+        // lowest set number that has no logged set rather than simply (count + 1).
+        val loggedSetNumbers = exercise.loggedSets.mapTo(mutableSetOf()) { it.setNumber }
+        return (1..totalSets).firstOrNull { it !in loggedSetNumbers } ?: totalSets
     }
 
     private fun buildSetKeySpace(exercises: List<LogWorkoutExerciseSnapshot>): Set<String> {

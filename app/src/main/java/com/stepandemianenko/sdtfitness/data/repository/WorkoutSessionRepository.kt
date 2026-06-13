@@ -135,11 +135,6 @@ sealed interface LogSetOutcome {
         val nextExerciseName: String
     ) : LogSetOutcome
 
-    data class SessionCompleted(
-        val completedExerciseName: String,
-        val sessionId: Long
-    ) : LogSetOutcome
-
     data object NoActiveSession : LogSetOutcome
 }
 
@@ -452,121 +447,10 @@ class WorkoutSessionRepository(
         }
     }
 
-    suspend fun logCurrentSet(
-        sessionId: Long,
-        actualWeightKg: Int,
-        actualReps: Int,
-        rpe: Int?
-    ): LogSetOutcome {
-        val accountId = accountSessionManager.requireActiveAccountId()
-        return database.withTransaction {
-            val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
-                ?: return@withTransaction LogSetOutcome.NoActiveSession
-
-            if (session.status !in ACTIVE_SESSION_STATUSES) {
-                return@withTransaction LogSetOutcome.NoActiveSession
-            }
-
-            val orderedExercises = exerciseDao.getForSession(accountId = accountId, sessionId = sessionId).sortedBy { it.exerciseOrder }
-            val existingSetLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
-            val loggedSetCountByExercise = existingSetLogs
-                .groupBy { it.sessionExerciseId }
-                .mapValues { (_, logs) -> logs.size }
-
-            val currentExercise = orderedExercises.firstOrNull { exercise ->
-                val completedForExercise = loggedSetCountByExercise[exercise.id] ?: 0
-                completedForExercise < exercise.targetSets
-            }
-                ?: return@withTransaction LogSetOutcome.NoActiveSession
-
-            val currentExerciseIndex = orderedExercises.indexOfFirst { it.id == currentExercise.id }.coerceAtLeast(0)
-            val completedForCurrentExercise = loggedSetCountByExercise[currentExercise.id] ?: 0
-            val setNumber = (completedForCurrentExercise + 1).coerceAtMost(currentExercise.targetSets)
-            val now = System.currentTimeMillis()
-
-            setLogDao.insert(
-                SessionSetLogEntity(
-                    accountId = accountId,
-                    sessionId = session.id,
-                    sessionExerciseId = currentExercise.id,
-                    setNumber = setNumber,
-                    targetWeightKg = currentExercise.targetWeightKg,
-                    actualWeightKg = actualWeightKg.coerceAtLeast(0),
-                    targetReps = currentExercise.targetReps,
-                    actualReps = actualReps.coerceAtLeast(1),
-                    rpe = rpe,
-                    completedAt = now,
-                    createdAt = now,
-                    updatedAt = now,
-                    syncState = SyncState.LOCAL_ONLY
-                )
-            )
-
-            val updatedSessionTotals = session.copy(
-                totalSetsCompleted = session.totalSetsCompleted + 1,
-                totalRepsCompleted = session.totalRepsCompleted + actualReps.coerceAtLeast(1),
-                totalVolumeCompleted = session.totalVolumeCompleted + (actualWeightKg.coerceAtLeast(0) * actualReps.coerceAtLeast(1)).toDouble(),
-                updatedAt = now
-            )
-
-            if (setNumber < currentExercise.targetSets) {
-                sessionDao.update(
-                    updatedSessionTotals.copy(
-                        status = WorkoutSessionStatus.ACTIVE,
-                        currentExerciseIndex = currentExerciseIndex,
-                        currentSetIndex = setNumber
-                    )
-                )
-                return@withTransaction LogSetOutcome.AdvancedSet(
-                    nextSetNumber = setNumber + 1,
-                    totalSetsForExercise = currentExercise.targetSets
-                )
-            }
-
-            exerciseDao.updateStatus(
-                accountId = accountId,
-                sessionExerciseId = currentExercise.id,
-                status = SessionExerciseStatus.COMPLETED,
-                updatedAt = now
-            )
-
-            val nextExercise = orderedExercises.getOrNull(session.currentExerciseIndex + 1)
-            if (nextExercise != null) {
-                exerciseDao.updateStatus(
-                    accountId = accountId,
-                    sessionExerciseId = nextExercise.id,
-                    status = SessionExerciseStatus.ACTIVE,
-                    updatedAt = now
-                )
-                sessionDao.update(
-                    updatedSessionTotals.copy(
-                        status = WorkoutSessionStatus.ACTIVE,
-                        currentExerciseIndex = currentExerciseIndex + 1,
-                        currentSetIndex = 0
-                    )
-                )
-                return@withTransaction LogSetOutcome.AdvancedExercise(
-                    completedExerciseName = currentExercise.exerciseName,
-                    nextExerciseName = nextExercise.exerciseName
-                )
-            }
-
-            sessionDao.update(
-                updatedSessionTotals.copy(
-                    status = WorkoutSessionStatus.COMPLETED,
-                    completedAt = now
-                )
-            )
-            LogSetOutcome.SessionCompleted(
-                completedExerciseName = currentExercise.exerciseName,
-                sessionId = session.id
-            )
-        }
-    }
-
     suspend fun logSetForExercise(
         sessionId: Long,
         sessionExerciseId: Long,
+        setNumber: Int,
         actualWeightKg: Int,
         actualReps: Int,
         rpe: Int?
@@ -594,7 +478,18 @@ class WorkoutSessionRepository(
                 return@withTransaction LogSetOutcome.NoActiveSession
             }
 
-            val setNumber = completedForTargetExercise + 1
+            // Set numbers are addressed directly so a set can be (un)completed independently of the
+            // others; reject out-of-range numbers or ones that are already logged for this exercise.
+            if (setNumber !in 1..targetExercise.targetSets) {
+                return@withTransaction LogSetOutcome.NoActiveSession
+            }
+            val alreadyLogged = existingSetLogs.any { log ->
+                log.sessionExerciseId == targetExercise.id && log.setNumber == setNumber
+            }
+            if (alreadyLogged) {
+                return@withTransaction LogSetOutcome.NoActiveSession
+            }
+
             val now = System.currentTimeMillis()
             val normalizedWeight = actualWeightKg.coerceAtLeast(0)
             val normalizedReps = actualReps.coerceAtLeast(1)
@@ -754,16 +649,12 @@ class WorkoutSessionRepository(
             } ?: return@withTransaction false
 
             val now = System.currentTimeMillis()
+            // Only this specific set is un-logged. We intentionally do NOT renumber the remaining
+            // sets so unchecking, say, set 1 leaves sets 2 and 3 completed in place; the freed set
+            // number simply becomes the next pending slot.
             setLogDao.deleteById(
                 accountId = accountId,
                 setLogId = targetSetLog.id
-            )
-            setLogDao.shiftSetNumbersDownAfter(
-                accountId = accountId,
-                sessionId = sessionId,
-                sessionExerciseId = sessionExerciseId,
-                removedSetNumber = setNumber,
-                updatedAt = now
             )
 
             val refreshedLogs = setLogDao.getForSession(accountId = accountId, sessionId = sessionId)
@@ -843,14 +734,18 @@ class WorkoutSessionRepository(
                     accountId = accountId,
                     setLogId = existingLog.id
                 )
-                setLogDao.shiftSetNumbersDownAfter(
-                    accountId = accountId,
-                    sessionId = sessionId,
-                    sessionExerciseId = sessionExerciseId,
-                    removedSetNumber = normalizedSetNumber,
-                    updatedAt = now
-                )
             }
+            // Always compact set numbers above the removed slot, even when the slot itself had no
+            // log: sets can be un-completed out of order (leaving a gap), so a logged set may sit
+            // above an empty one. Without this, deleting the empty slot would shrink targetSets and
+            // strand that higher log beyond the visible range.
+            setLogDao.shiftSetNumbersDownAfter(
+                accountId = accountId,
+                sessionId = sessionId,
+                sessionExerciseId = sessionExerciseId,
+                removedSetNumber = normalizedSetNumber,
+                updatedAt = now
+            )
 
             exerciseDao.updateTargetSets(
                 accountId = accountId,
