@@ -1324,19 +1324,19 @@ private fun DailyQuestEditorDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onSave) {
+            TextButton(onClick = onDismiss) {
                 Text(
-                    text = "Save",
-                    color = PrimaryText,
+                    text = "Cancel",
+                    color = ActionColor,
                     fontWeight = FontWeight.SemiBold
                 )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onSave) {
                 Text(
-                    text = "Cancel",
-                    color = ActionColor,
+                    text = "Save",
+                    color = PrimaryText,
                     fontWeight = FontWeight.SemiBold
                 )
             }
