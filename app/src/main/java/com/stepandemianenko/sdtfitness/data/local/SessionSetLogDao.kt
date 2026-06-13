@@ -81,6 +81,31 @@ interface SessionSetLogDao {
     @Query(
         """
         SELECT
+            ws.id AS sessionId,
+            COALESCE(ws.completedAt, ws.startedAt) AS completedAtMillis,
+            MAX(ssl.actualWeightKg) AS maxWeightKg,
+            MAX(ssl.actualReps) AS maxReps
+        FROM session_set_logs AS ssl
+        INNER JOIN session_exercises AS se ON se.id = ssl.sessionExerciseId
+        INNER JOIN workout_sessions AS ws ON ws.id = ssl.sessionId
+        WHERE ssl.accountId = :accountId
+          AND se.accountId = :accountId
+          AND ws.accountId = :accountId
+          AND se.exerciseId = :exerciseId
+          AND ws.status = :completedStatus
+        GROUP BY ws.id
+        ORDER BY completedAtMillis ASC
+        """
+    )
+    suspend fun getExerciseSessionTrend(
+        accountId: String,
+        exerciseId: String,
+        completedStatus: String
+    ): List<ExerciseSessionTrendRow>
+
+    @Query(
+        """
+        SELECT
             (SELECT COUNT(*) FROM workout_sessions WHERE accountId = :accountId AND status = :completedStatus) AS completedSessions,
             (SELECT COALESCE(SUM(totalSetsCompleted), 0) FROM workout_sessions WHERE accountId = :accountId AND status = :completedStatus) AS totalSets,
             (SELECT COALESCE(SUM(totalRepsCompleted), 0) FROM workout_sessions WHERE accountId = :accountId AND status = :completedStatus) AS totalReps,

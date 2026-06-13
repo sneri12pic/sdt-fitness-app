@@ -378,6 +378,13 @@ data class ExerciseSetResultRow(
     val completedAt: Long
 )
 
+data class ExerciseSessionTrendRow(
+    val sessionId: Long,
+    val completedAtMillis: Long,
+    val maxWeightKg: Int,
+    val maxReps: Int
+)
+
 data class ProgressTotalsRow(
     val completedSessions: Int,
     val totalSets: Int,
