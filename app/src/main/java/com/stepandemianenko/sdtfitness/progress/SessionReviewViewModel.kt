@@ -116,6 +116,10 @@ class SessionReviewViewModel(
         val weightValues = trendPoints.map { it.maxWeightKg.toFloat() }
         val repsValues = trendPoints.map { it.maxReps.toFloat() }
 
+        // Per-set values for the reviewed session, powering the most zoomed-in "Session" view.
+        val sessionWeightValues = exercise.sets.map { it.actualWeightKg.toFloat() }
+        val sessionRepsValues = exercise.sets.map { it.actualReps.toFloat() }
+
         return SessionExerciseReviewUiModel(
             exerciseName = exercise.exerciseName,
             sets = setRows,
@@ -125,7 +129,8 @@ class SessionReviewViewModel(
                 actualValues = weightValues,
                 targetValues = List(weightValues.size) { null },
                 unitLabel = "kg",
-                pointTimestampsMillis = timestamps
+                pointTimestampsMillis = timestamps,
+                sessionSetValues = sessionWeightValues
             ),
             repsChart = SetMetricChartUiModel(
                 title = "Reps trend",
@@ -133,7 +138,8 @@ class SessionReviewViewModel(
                 actualValues = repsValues,
                 targetValues = List(repsValues.size) { null },
                 unitLabel = "reps",
-                pointTimestampsMillis = timestamps
+                pointTimestampsMillis = timestamps,
+                sessionSetValues = sessionRepsValues
             )
         )
     }

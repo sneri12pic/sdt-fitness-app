@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,7 @@ import kotlin.math.sqrt
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val ProgressPrimaryText = Color(0xFF4F2912)
@@ -67,12 +69,14 @@ private val ProgressTargetPlaceholder = Color(0xA0A67B6C)
 private val ProgressSelectionBg = Color(0xFFFDEDE7)
 private val ProgressRangeChipBg = Color(0xFFEBCBC0)
 
+// Discrete zoom levels, ordered from most zoomed-in (SESSION, per-set entries of the reviewed
+// session) to most zoomed-out (THREE_MONTHS). Pinch-to-zoom steps through this order.
 private enum class ChartRangeMode(
     val label: String,
     val days: Int
 ) {
+    SESSION("Session", 0),
     SEVEN_DAYS("7 days", 7),
-    ONE_MONTH("1 month", 30),
     THREE_MONTHS("3 months", 90)
 }
 
@@ -88,7 +92,10 @@ data class SetMetricChartUiModel(
     val actualValues: List<Float>,
     val targetValues: List<Float?>,
     val unitLabel: String,
-    val pointTimestampsMillis: List<Long> = emptyList()
+    val pointTimestampsMillis: List<Long> = emptyList(),
+    // Per-set values logged during the reviewed session (one entry per set). When present alongside
+    // a time-trend series, the chart offers a most-zoomed-in "Session" level that plots these.
+    val sessionSetValues: List<Float> = emptyList()
 )
 
 data class DailyStepsBarChartPoint(
@@ -284,15 +291,24 @@ fun ExerciseSetMetricChart(
     // Time-trend charts carry one timestamp per point; the range chips then filter by date window.
     // Charts without timestamps (Home weight dialog, Progress) keep showing every point and hide the chips.
     val isTimeTrend = chart.pointTimestampsMillis.isNotEmpty()
-    var rangeMode by remember(chart.title, chart.unitLabel) { mutableStateOf(ChartRangeMode.ONE_MONTH) }
+    val hasSessionData = isTimeTrend && chart.sessionSetValues.isNotEmpty()
+    // Zoom levels offered for this chart, most zoomed-in first. The "Session" level only appears
+    // when per-set data is available; pinch-to-zoom steps through this same ordered list.
+    val availableModes = remember(hasSessionData) {
+        ChartRangeMode.values().filter { hasSessionData || it != ChartRangeMode.SESSION }
+    }
+    var rangeMode by remember(chart.title, chart.unitLabel, hasSessionData) {
+        mutableStateOf(if (hasSessionData) ChartRangeMode.SESSION else ChartRangeMode.THREE_MONTHS)
+    }
     val metricKind = remember(chart.unitLabel) {
         resolveMetricKind(chart.unitLabel)
     }
 
-    val visibleSeries = remember(chart.actualValues, chart.targetValues, chart.pointTimestampsMillis, isTimeTrend, rangeMode) {
-        filterSeriesByWindow(
+    val visibleSeries = remember(chart.actualValues, chart.targetValues, chart.sessionSetValues, chart.pointTimestampsMillis, isTimeTrend, rangeMode) {
+        buildVisibleSeries(
             actualValues = chart.actualValues,
             targetValues = chart.targetValues,
+            sessionSetValues = chart.sessionSetValues,
             timestamps = chart.pointTimestampsMillis,
             isTimeTrend = isTimeTrend,
             mode = rangeMode
@@ -300,6 +316,9 @@ fun ExerciseSetMetricChart(
     }
     val visibleActualValues = visibleSeries.actualValues
     val visibleTargetValues = visibleSeries.targetValues
+    val xAxisLabels = remember(visibleSeries.pointLabels) {
+        selectXAxisLabels(visibleSeries.pointLabels)
+    }
 
     val hasAnyActual = visibleActualValues.isNotEmpty()
     val targetSeriesHasValues = visibleTargetValues.any { it != null }
@@ -371,6 +390,7 @@ fun ExerciseSetMetricChart(
 
         if (isTimeTrend) {
             RangeModeControl(
+                availableModes = availableModes,
                 selectedMode = rangeMode,
                 onModeSelected = { rangeMode = it }
             )
@@ -385,7 +405,11 @@ fun ExerciseSetMetricChart(
         ) {
             if (!hasAnyActual) {
                 Text(
-                    text = if (isTimeTrend) "No sessions in this window" else "No recorded sets yet",
+                    text = when {
+                        !isTimeTrend -> "No recorded sets yet"
+                        rangeMode == ChartRangeMode.SESSION -> "No sets recorded for this session"
+                        else -> "No sessions in this window"
+                    },
                     color = ProgressSecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
@@ -402,6 +426,25 @@ fun ExerciseSetMetricChart(
                         .weight(1f)
                         .fillMaxHeight()
                         .onSizeChanged { graphSize = it }
+                        .pointerInput(availableModes) {
+                            // Pinch the chart to step zoom levels: spreading fingers zooms in toward
+                            // the per-set Session view, pinching together zooms out to wider windows.
+                            var cumulativeZoom = 1f
+                            detectTransformGestures { _, _, zoom, _ ->
+                                cumulativeZoom *= zoom
+                                val currentIndex = availableModes.indexOf(rangeMode).coerceAtLeast(0)
+                                when {
+                                    cumulativeZoom >= 1.25f -> {
+                                        rangeMode = availableModes[(currentIndex - 1).coerceAtLeast(0)]
+                                        cumulativeZoom = 1f
+                                    }
+                                    cumulativeZoom <= 0.8f -> {
+                                        rangeMode = availableModes[(currentIndex + 1).coerceAtMost(availableModes.lastIndex)]
+                                        cumulativeZoom = 1f
+                                    }
+                                }
+                            }
+                        }
                         .pointerInput(visibleActualValues, actualPoints) {
             detectTapGestures { tap ->
                                 if (actualPoints.isEmpty()) {
@@ -569,12 +612,48 @@ fun ExerciseSetMetricChart(
             }
         }
 
+        // X-axis: dates for the trend windows, set numbers for the per-set Session view. Insets
+        // mirror the chart's padding and y-axis column so labels sit under the plotted points.
+        if (xAxisLabels.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp),
+                    horizontalArrangement = if (xAxisLabels.size == 1) {
+                        Arrangement.Center
+                    } else {
+                        Arrangement.SpaceBetween
+                    }
+                ) {
+                    xAxisLabels.forEach { label ->
+                        Text(
+                            text = label,
+                            color = ProgressSecondaryText,
+                            fontSize = 11.sp,
+                            lineHeight = 11.sp
+                        )
+                    }
+                }
+                Box(modifier = Modifier.width(40.dp))
+            }
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = if (isTimeTrend) "${chart.unitLabel} • last ${rangeMode.label}" else chart.unitLabel,
+                text = when {
+                    !isTimeTrend -> chart.unitLabel
+                    rangeMode == ChartRangeMode.SESSION -> "${chart.unitLabel} • this session"
+                    else -> "${chart.unitLabel} • last ${rangeMode.label}"
+                },
                 color = ProgressSecondaryText,
                 fontSize = 12.sp,
                 lineHeight = 12.sp
@@ -593,6 +672,7 @@ fun ExerciseSetMetricChart(
 
 @Composable
 private fun RangeModeControl(
+    availableModes: List<ChartRangeMode>,
     selectedMode: ChartRangeMode,
     onModeSelected: (ChartRangeMode) -> Unit
 ) {
@@ -601,13 +681,13 @@ private fun RangeModeControl(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "Range:",
+            text = "Zoom:",
             color = ProgressSecondaryText,
             fontSize = 12.sp,
             lineHeight = 12.sp,
             fontWeight = FontWeight.SemiBold
         )
-        ChartRangeMode.values().forEach { mode ->
+        availableModes.forEach { mode ->
             val isSelected = mode == selectedMode
             Box(
                 modifier = Modifier
@@ -722,23 +802,47 @@ private fun chooseBaseStep(
 
 private data class VisibleSeries(
     val actualValues: List<Float>,
-    val targetValues: List<Float?>
+    val targetValues: List<Float?>,
+    // One label per visible point, used to render the date (or set #) x-axis under the chart.
+    val pointLabels: List<String>
 )
 
+private val XAxisDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM d", Locale.ENGLISH)
+
 /**
- * For time-trend charts, keeps only points whose timestamp falls within the selected window
- * (now - mode.days .. now). Charts without timestamps are returned unchanged so the Home weight
- * dialog and Progress chart keep showing their full series.
+ * Resolves the points the chart should plot for the selected zoom level.
+ *
+ * - [ChartRangeMode.SESSION] plots every set logged during the reviewed session, labelled "Set 1",
+ *   "Set 2"… on the x-axis.
+ * - The day-window modes keep only cross-session trend points whose timestamp falls within
+ *   (now - mode.days .. now), labelled by completion date.
+ *
+ * Charts without timestamps (Home weight dialog, Progress) are not time trends and are returned
+ * unchanged so they keep showing their full series with no x-axis labels.
  */
-private fun filterSeriesByWindow(
+private fun buildVisibleSeries(
     actualValues: List<Float>,
     targetValues: List<Float?>,
+    sessionSetValues: List<Float>,
     timestamps: List<Long>,
     isTimeTrend: Boolean,
     mode: ChartRangeMode
 ): VisibleSeries {
     if (!isTimeTrend) {
-        return VisibleSeries(actualValues = actualValues, targetValues = targetValues)
+        return VisibleSeries(
+            actualValues = actualValues,
+            targetValues = targetValues,
+            pointLabels = emptyList()
+        )
+    }
+
+    if (mode == ChartRangeMode.SESSION) {
+        return VisibleSeries(
+            actualValues = sessionSetValues,
+            targetValues = List(sessionSetValues.size) { null },
+            pointLabels = sessionSetValues.indices.map { "Set ${it + 1}" }
+        )
     }
 
     val zone = ZoneId.systemDefault()
@@ -750,7 +854,29 @@ private fun filterSeriesByWindow(
 
     val filteredActual = keptIndices.mapNotNull { actualValues.getOrNull(it) }
     val filteredTarget = keptIndices.map { targetValues.getOrNull(it) }
-    return VisibleSeries(actualValues = filteredActual, targetValues = filteredTarget)
+    val filteredLabels = keptIndices.map { index ->
+        Instant.ofEpochMilli(timestamps[index]).atZone(zone).toLocalDate().format(XAxisDateFormatter)
+    }
+    return VisibleSeries(
+        actualValues = filteredActual,
+        targetValues = filteredTarget,
+        pointLabels = filteredLabels
+    )
+}
+
+/**
+ * Thins a per-point label list down to at most three evenly-spaced labels (first / middle / last)
+ * so the x-axis stays readable when many points are visible.
+ */
+private fun selectXAxisLabels(pointLabels: List<String>): List<String> {
+    return when {
+        pointLabels.size <= 3 -> pointLabels
+        else -> listOf(
+            pointLabels.first(),
+            pointLabels[pointLabels.size / 2],
+            pointLabels.last()
+        )
+    }
 }
 
 private fun niceNumber(value: Float): Float {
