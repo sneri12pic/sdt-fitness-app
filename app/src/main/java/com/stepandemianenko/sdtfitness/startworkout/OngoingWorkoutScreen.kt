@@ -155,6 +155,7 @@ fun OngoingWorkoutRoute(
         pageCount = { 2 }
     )
     val coroutineScope = rememberCoroutineScope()
+    val setCompletionFeedback = rememberSetCompletionFeedback()
 
     LaunchedEffect(initialSessionId) {
         viewModel.attachSession(initialSessionId)
@@ -257,6 +258,7 @@ fun OngoingWorkoutRoute(
                         )
                     )
                     if (!set.isCompleted) {
+                        setCompletionFeedback.playSetCompleted(set.setNumber)
                         onLogSetClick(
                             set.weight.toIntOrNull() ?: 0,
                             set.reps.toIntOrNull() ?: 1,
