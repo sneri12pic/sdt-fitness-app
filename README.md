@@ -14,6 +14,12 @@ The app is organized around daily consistency: plan a routine, start a session, 
 - Authentication gate with email/password login and registration, refresh-token session restore, saved credential support, guest mode, and sign out.
 - Companion `auth-api` module that implements the Android auth contract for local development or deployment.
 
+## Demo
+
+A short walkthrough of the main app flow: planning a routine, starting a session, logging sets, and reviewing progress.
+
+https://github.com/user-attachments/assets/efff661e-f4e8-4b23-8123-3ca83de7efae
+
 ## Screenshots
 
 Current prototype screens from the main app flow.
