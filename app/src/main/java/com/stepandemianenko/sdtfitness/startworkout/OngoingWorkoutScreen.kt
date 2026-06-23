@@ -146,7 +146,7 @@ fun OngoingWorkoutRoute(
     onHomeClick: () -> Unit,
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
-    viewModel: LogWorkoutViewModel = viewModel()
+    viewModel: LogWorkoutViewModel = viewModel(factory = LogWorkoutViewModel.Factory)
 ) {
     val uiState = viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }

@@ -1,10 +1,17 @@
 package com.stepandemianenko.sdtfitness.startworkout
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
-import com.stepandemianenko.sdtfitness.data.AppGraph
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.stepandemianenko.sdtfitness.App
+import com.stepandemianenko.sdtfitness.data.repository.ExerciseCatalogRepository
 import com.stepandemianenko.sdtfitness.data.repository.SessionExerciseDraft
+import com.stepandemianenko.sdtfitness.data.repository.WorkoutPlanRepository
+import com.stepandemianenko.sdtfitness.data.repository.WorkoutSessionRepository
+import com.stepandemianenko.sdtfitness.home.HomeRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -16,8 +23,25 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class StartWorkoutViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+    private val workoutSessionRepository: WorkoutSessionRepository,
+    private val workoutPlanRepository: WorkoutPlanRepository,
+    private val exerciseCatalogRepository: ExerciseCatalogRepository,
+    private val homeRepository: HomeRepository
+) : ViewModel() {
+
+    companion object {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val container = (this[APPLICATION_KEY] as App).container
+                StartWorkoutViewModel(
+                    workoutSessionRepository = container.workoutSessionRepository,
+                    workoutPlanRepository = container.workoutPlanRepository,
+                    exerciseCatalogRepository = container.exerciseCatalogRepository,
+                    homeRepository = container.homeRepository
+                )
+            }
+        }
+    }
 
     private data class DeletedExerciseSnapshot(
         val exercise: WorkoutExerciseUiModel,
@@ -29,10 +53,6 @@ class StartWorkoutViewModel(
     private val _effects = MutableSharedFlow<StartWorkoutEffect>(extraBufferCapacity = 1)
     val effects: SharedFlow<StartWorkoutEffect> = _effects.asSharedFlow()
     private var lastDeletedExercise: DeletedExerciseSnapshot? = null
-    private val workoutSessionRepository = AppGraph.workoutSessionRepository(application)
-    private val workoutPlanRepository = AppGraph.workoutPlanRepository(application)
-    private val exerciseCatalogRepository = AppGraph.exerciseCatalogRepository(application)
-    private val homeRepository = AppGraph.homeRepository(application)
     private var appendToSessionId: Long? = null
     private var appendModeEnabled: Boolean = false
 

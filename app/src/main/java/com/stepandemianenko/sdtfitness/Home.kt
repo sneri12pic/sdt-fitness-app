@@ -201,7 +201,7 @@ fun HomeRoute(
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
-    viewModel: HomeViewModel = viewModel()
+    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 

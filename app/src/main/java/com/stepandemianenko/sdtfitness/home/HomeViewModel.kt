@@ -1,9 +1,14 @@
 package com.stepandemianenko.sdtfitness.home
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
-import com.stepandemianenko.sdtfitness.data.AppGraph
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.stepandemianenko.sdtfitness.App
+import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.health.HealthConnectManager
 import com.stepandemianenko.sdtfitness.data.health.WeightSample
 import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,11 +57,23 @@ sealed interface HomeUiEvent {
 }
 
 class HomeViewModel(
-    application: Application
-) : AndroidViewModel(application) {
-    private val repository = AppGraph.homeRepository(application)
-    private val accountSessionManager = AppGraph.accountSessionManager(application)
-    private val healthConnectManager = AppGraph.healthConnectManager(application)
+    private val repository: HomeRepository,
+    private val accountSessionManager: AccountSessionManager,
+    private val healthConnectManager: HealthConnectManager
+) : ViewModel() {
+
+    companion object {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val container = (this[APPLICATION_KEY] as App).container
+                HomeViewModel(
+                    repository = container.homeRepository,
+                    accountSessionManager = container.accountSessionManager,
+                    healthConnectManager = container.healthConnectManager
+                )
+            }
+        }
+    }
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
