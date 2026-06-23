@@ -1,10 +1,17 @@
 package com.stepandemianenko.sdtfitness.progress
 
-import android.app.Application
 import androidx.health.connect.client.HealthConnectClient
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
-import com.stepandemianenko.sdtfitness.data.AppGraph
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.stepandemianenko.sdtfitness.App
+import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.health.HealthConnectManager
+import com.stepandemianenko.sdtfitness.domain.usecase.GetProgressSnapshotUseCase
+import com.stepandemianenko.sdtfitness.home.HomeRepository
 import com.stepandemianenko.sdtfitness.data.health.DailyStepsSample
 import com.stepandemianenko.sdtfitness.data.health.WeightSample
 import com.stepandemianenko.sdtfitness.home.DailyStepsSourceType
@@ -20,13 +27,27 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 class ProgressViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+    private val getProgressSnapshot: GetProgressSnapshotUseCase,
+    private val accountSessionManager: AccountSessionManager,
+    private val healthConnectManager: HealthConnectManager,
+    private val homeRepository: HomeRepository
+) : ViewModel() {
 
-    private val getProgressSnapshot = AppGraph.getProgressSnapshotUseCase(application)
-    private val accountSessionManager = AppGraph.accountSessionManager(application)
-    private val healthConnectManager = AppGraph.healthConnectManager(application)
-    private val homeRepository = AppGraph.homeRepository(application)
+    companion object {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val container = (this[APPLICATION_KEY] as App).container
+                ProgressViewModel(
+                    getProgressSnapshot = container.getProgressSnapshotUseCase,
+                    accountSessionManager = container.accountSessionManager,
+                    healthConnectManager = container.healthConnectManager,
+                    homeRepository = container.homeRepository
+                )
+            }
+        }
+
+        private val dayFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d", Locale.ENGLISH)
+    }
 
     private val _uiState = MutableStateFlow(ProgressUiState(isInitialLoading = true))
     val uiState: StateFlow<ProgressUiState> = _uiState.asStateFlow()
@@ -336,7 +357,4 @@ class ProgressViewModel(
         )
     }
 
-    companion object {
-        private val dayFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d", Locale.ENGLISH)
-    }
 }

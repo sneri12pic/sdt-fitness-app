@@ -89,7 +89,7 @@ fun StartWorkoutRoute(
     onHomeClick: () -> Unit,
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
-    viewModel: StartWorkoutViewModel = viewModel()
+    viewModel: StartWorkoutViewModel = viewModel(factory = StartWorkoutViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }

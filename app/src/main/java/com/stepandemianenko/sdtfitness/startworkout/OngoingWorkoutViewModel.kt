@@ -1,10 +1,15 @@
 package com.stepandemianenko.sdtfitness.startworkout
 
-import android.app.Application
-import android.content.Context
-import androidx.lifecycle.AndroidViewModel
+import android.content.SharedPreferences
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
-import com.stepandemianenko.sdtfitness.data.AppGraph
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.stepandemianenko.sdtfitness.App
+import com.stepandemianenko.sdtfitness.data.repository.WorkoutSessionRepository
+import com.stepandemianenko.sdtfitness.home.HomeRepository
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionStatus
 import com.stepandemianenko.sdtfitness.data.repository.LogSetOutcome
 import com.stepandemianenko.sdtfitness.data.repository.LoggedSetUpdateDraft
@@ -26,8 +31,10 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class LogWorkoutViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+    private val repository: WorkoutSessionRepository,
+    private val homeRepository: HomeRepository,
+    private val preferences: SharedPreferences
+) : ViewModel() {
 
     private data class SetInputDraft(
         val weight: String,
@@ -59,12 +66,6 @@ class LogWorkoutViewModel(
         ) : PendingDeletion
     }
 
-    private val repository = AppGraph.workoutSessionRepository(application)
-    private val homeRepository = AppGraph.homeRepository(application)
-    private val preferences = application.getSharedPreferences(
-        REST_TIMER_PREFS_NAME,
-        Context.MODE_PRIVATE
-    )
     private var hasSeenRestTimerHint = preferences.getBoolean(REST_TIMER_HINT_KEY, false)
     private var restTimerState: RestTimerState = RestTimerState.Inactive
     private var restTimerRemainingSeconds: Int = 0
@@ -240,10 +241,7 @@ class LogWorkoutViewModel(
             return
         }
 
-        val nextSetNumber = nextPendingSetNumberForExercise(exerciseId = exercise.id, snapshot = snapshot)
-        if (setNumber != nextSetNumber) {
-            return
-        }
+        // Any pending set can be ticked, even if lower-numbered sets are still incomplete.
         val draft = setInputDrafts[setKey]
 
         val loggedWeight = draft?.weight?.toIntOrNull() ?: exercise.targetWeightKg
@@ -558,6 +556,14 @@ class LogWorkoutViewModel(
         val exercise = snapshot.exercises.firstOrNull { it.id == exerciseId } ?: return
         val pendingSuggestedWeight = pendingSuggestedWeightByExercise[exerciseId]
         val existingSetCount = exercise.targetSets.coerceAtLeast(0)
+        if (existingSetCount >= MAX_SETS_PER_EXERCISE) {
+            viewModelScope.launch {
+                _effects.emit(
+                    LogWorkoutEffect.ShowSnackbar(message = "You can add up to $MAX_SETS_PER_EXERCISE sets.")
+                )
+            }
+            return
+        }
         val nextSetNumber = existingSetCount + 1
         val nextSetKey = buildSetKey(exerciseId = exerciseId, setNumber = nextSetNumber)
         val previousSetNumber = existingSetCount
@@ -836,10 +842,7 @@ class LogWorkoutViewModel(
         val totalTargetSets = snapshot.totalSetsTarget.coerceAtLeast(0)
 
         val exercises = orderedExercises.map { exercise ->
-            toExerciseUiModel(
-                snapshot = snapshot,
-                exercise = exercise
-            )
+            toExerciseUiModel(exercise = exercise)
         }
 
         val now = System.currentTimeMillis()
@@ -872,12 +875,10 @@ class LogWorkoutViewModel(
     }
 
     private fun toExerciseUiModel(
-        snapshot: LogWorkoutSessionSnapshot,
         exercise: LogWorkoutExerciseSnapshot
     ): ExerciseUiModel {
         val totalSets = exercise.targetSets.coerceAtLeast(0)
         val loggedBySetNumber = exercise.loggedSets.associateBy { it.setNumber }
-        val nextSetNumberForExercise = nextPendingSetNumberForExercise(exercise.id, snapshot)
         val previousText = exercise.previousResult?.let { "${it.weightKg}kg x ${it.reps}" }.orEmpty()
 
         val sets = (1..totalSets).map { setNumber ->
@@ -909,7 +910,7 @@ class LogWorkoutViewModel(
                 weight = currentWeight,
                 reps = currentReps,
                 isCompleted = logged != null,
-                isCompletionEnabled = logged == null && setNumber == nextSetNumberForExercise,
+                isCompletionEnabled = logged == null,
                 activeFeedbackVisible = activeFeedbackSetKey == setKey && logged != null,
                 feedbackMessage = feedbackMessageBySet[setKey],
                 selectedRpe = selectedRpe
@@ -927,19 +928,6 @@ class LogWorkoutViewModel(
             restTimerStatusText = if (restTimerOn) "Rest Timer: ON" else "Rest Timer: OFF",
             sets = sets
         )
-    }
-
-    private fun nextPendingSetNumberForExercise(
-        exerciseId: Long,
-        snapshot: LogWorkoutSessionSnapshot
-    ): Int {
-        val exercise = snapshot.exercises.firstOrNull { it.id == exerciseId } ?: return 1
-        val totalSets = exercise.targetSets.coerceAtLeast(0)
-        if (totalSets == 0) return 0
-        // Sets can be un-completed out of order, leaving a gap, so the next pending set is the
-        // lowest set number that has no logged set rather than simply (count + 1).
-        val loggedSetNumbers = exercise.loggedSets.mapTo(mutableSetOf()) { it.setNumber }
-        return (1..totalSets).firstOrNull { it !in loggedSetNumbers } ?: totalSets
     }
 
     private fun buildSetKeySpace(exercises: List<LogWorkoutExerciseSnapshot>): Set<String> {
@@ -1273,11 +1261,22 @@ class LogWorkoutViewModel(
         super.onCleared()
     }
 
-    private companion object {
-        const val REST_TIMER_PREFS_NAME = "ongoing_workout_preferences"
-        const val REST_TIMER_HINT_KEY = "rest_timer_hint_seen"
-        const val REST_TIMER_EXTENSION_SECONDS = 10
-        const val MAX_REST_TIMER_SECONDS = 60 * 60
-        const val FEEDBACK_VISIBLE_DURATION_MS = 10_000L
+    companion object {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val container = (this[APPLICATION_KEY] as App).container
+                LogWorkoutViewModel(
+                    repository = container.workoutSessionRepository,
+                    homeRepository = container.homeRepository,
+                    preferences = container.ongoingWorkoutPreferences
+                )
+            }
+        }
+
+        private const val REST_TIMER_HINT_KEY = "rest_timer_hint_seen"
+        private const val REST_TIMER_EXTENSION_SECONDS = 10
+        private const val MAX_REST_TIMER_SECONDS = 60 * 60
+        private const val FEEDBACK_VISIBLE_DURATION_MS = 10_000L
+        private const val MAX_SETS_PER_EXERCISE = 20
     }
 }

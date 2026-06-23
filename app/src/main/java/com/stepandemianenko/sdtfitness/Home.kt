@@ -160,7 +160,7 @@ class Home : ComponentActivity() {
     private fun openProgressWithoutAnimation() {
         startActivity(Intent(this, Progress::class.java))
         overridePendingTransition(0, 0)
-    }
+     }
 
     private fun openProfileWithoutAnimation() {
         startActivity(Intent(this, Profile::class.java))
@@ -201,7 +201,7 @@ fun HomeRoute(
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
-    viewModel: HomeViewModel = viewModel()
+    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 

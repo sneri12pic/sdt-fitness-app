@@ -155,7 +155,7 @@ fun ProgressRoute(
     onWorkoutClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onCompletedSessionsClick: () -> Unit = {},
-    viewModel: ProgressViewModel = viewModel()
+    viewModel: ProgressViewModel = viewModel(factory = ProgressViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current

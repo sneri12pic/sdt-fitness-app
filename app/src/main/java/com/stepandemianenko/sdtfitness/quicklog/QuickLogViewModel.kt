@@ -1,9 +1,13 @@
 package com.stepandemianenko.sdtfitness.quicklog
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
-import com.stepandemianenko.sdtfitness.data.AppGraph
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.stepandemianenko.sdtfitness.App
+import com.stepandemianenko.sdtfitness.home.HomeRepository
 import com.stepandemianenko.sdtfitness.home.QuickLogType
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,10 +39,20 @@ sealed interface QuickLogEffect {
 }
 
 class QuickLogViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+    private val homeRepository: HomeRepository
+) : ViewModel() {
 
-    private val homeRepository = AppGraph.homeRepository(application)
+    companion object {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                QuickLogViewModel(
+                    homeRepository = (this[APPLICATION_KEY] as App).container.homeRepository
+                )
+            }
+        }
+
+        private const val MANUAL_QUICK_LOG_SOURCE = "manual_quick_log"
+    }
 
     private val _uiState = MutableStateFlow(QuickLogUiState())
     val uiState: StateFlow<QuickLogUiState> = _uiState.asStateFlow()
@@ -89,7 +103,4 @@ class QuickLogViewModel(
         }
     }
 
-    companion object {
-        private const val MANUAL_QUICK_LOG_SOURCE = "manual_quick_log"
-    }
 }
