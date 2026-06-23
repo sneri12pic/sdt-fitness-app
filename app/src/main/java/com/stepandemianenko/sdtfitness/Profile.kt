@@ -258,7 +258,7 @@ fun ProfileRoute(
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
     onSignOutClick: () -> Unit = {},
-    viewModel: ProfileViewModel = viewModel()
+    viewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }

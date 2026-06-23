@@ -1,12 +1,16 @@
 package com.stepandemianenko.sdtfitness.auth.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.stepandemianenko.sdtfitness.App
 import com.stepandemianenko.sdtfitness.auth.domain.AuthFailureReason
+import com.stepandemianenko.sdtfitness.auth.domain.AuthRepository
 import com.stepandemianenko.sdtfitness.auth.domain.AuthResult
 import com.stepandemianenko.sdtfitness.auth.domain.SessionState
-import com.stepandemianenko.sdtfitness.data.AppGraph
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,9 +51,21 @@ sealed interface AuthUiEvent {
 }
 
 class AuthViewModel(
-    application: Application
-) : AndroidViewModel(application) {
-    private val authRepository = AppGraph.authRepository(application)
+    private val authRepository: AuthRepository
+) : ViewModel() {
+
+    companion object {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                AuthViewModel(
+                    authRepository = (this[APPLICATION_KEY] as App).container.authRepository
+                )
+            }
+        }
+
+        private const val GENERIC_AUTH_ERROR = "We could not sign you in. Check your details and try again."
+        private const val GENERIC_REGISTRATION_ERROR = "We could not create your account. Try again later."
+    }
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
@@ -257,8 +273,4 @@ class AuthViewModel(
         }
     }
 
-    private companion object {
-        const val GENERIC_AUTH_ERROR = "We could not sign you in. Check your details and try again."
-        const val GENERIC_REGISTRATION_ERROR = "We could not create your account. Try again later."
-    }
 }

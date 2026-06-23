@@ -1,10 +1,15 @@
 package com.stepandemianenko.sdtfitness.startworkout
 
-import android.app.Application
-import android.content.Context
-import androidx.lifecycle.AndroidViewModel
+import android.content.SharedPreferences
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
-import com.stepandemianenko.sdtfitness.data.AppGraph
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.stepandemianenko.sdtfitness.App
+import com.stepandemianenko.sdtfitness.data.repository.WorkoutSessionRepository
+import com.stepandemianenko.sdtfitness.home.HomeRepository
 import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionStatus
 import com.stepandemianenko.sdtfitness.data.repository.LogSetOutcome
 import com.stepandemianenko.sdtfitness.data.repository.LoggedSetUpdateDraft
@@ -26,8 +31,10 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class LogWorkoutViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+    private val repository: WorkoutSessionRepository,
+    private val homeRepository: HomeRepository,
+    private val preferences: SharedPreferences
+) : ViewModel() {
 
     private data class SetInputDraft(
         val weight: String,
@@ -59,12 +66,6 @@ class LogWorkoutViewModel(
         ) : PendingDeletion
     }
 
-    private val repository = AppGraph.workoutSessionRepository(application)
-    private val homeRepository = AppGraph.homeRepository(application)
-    private val preferences = application.getSharedPreferences(
-        REST_TIMER_PREFS_NAME,
-        Context.MODE_PRIVATE
-    )
     private var hasSeenRestTimerHint = preferences.getBoolean(REST_TIMER_HINT_KEY, false)
     private var restTimerState: RestTimerState = RestTimerState.Inactive
     private var restTimerRemainingSeconds: Int = 0
@@ -1273,11 +1274,21 @@ class LogWorkoutViewModel(
         super.onCleared()
     }
 
-    private companion object {
-        const val REST_TIMER_PREFS_NAME = "ongoing_workout_preferences"
-        const val REST_TIMER_HINT_KEY = "rest_timer_hint_seen"
-        const val REST_TIMER_EXTENSION_SECONDS = 10
-        const val MAX_REST_TIMER_SECONDS = 60 * 60
-        const val FEEDBACK_VISIBLE_DURATION_MS = 10_000L
+    companion object {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val container = (this[APPLICATION_KEY] as App).container
+                LogWorkoutViewModel(
+                    repository = container.workoutSessionRepository,
+                    homeRepository = container.homeRepository,
+                    preferences = container.ongoingWorkoutPreferences
+                )
+            }
+        }
+
+        private const val REST_TIMER_HINT_KEY = "rest_timer_hint_seen"
+        private const val REST_TIMER_EXTENSION_SECONDS = 10
+        private const val MAX_REST_TIMER_SECONDS = 60 * 60
+        private const val FEEDBACK_VISIBLE_DURATION_MS = 10_000L
     }
 }

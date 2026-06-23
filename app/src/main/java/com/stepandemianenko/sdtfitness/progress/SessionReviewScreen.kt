@@ -46,7 +46,7 @@ private val ProgressAccent = Color(0xFFF08A67)
 fun SessionReviewRoute(
     sessionId: Long,
     onBackClick: () -> Unit,
-    viewModel: SessionReviewViewModel = viewModel()
+    viewModel: SessionReviewViewModel = viewModel(factory = SessionReviewViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 

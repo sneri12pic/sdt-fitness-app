@@ -1,6 +1,7 @@
 package com.stepandemianenko.sdtfitness.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.stepandemianenko.sdtfitness.BuildConfig
 import com.stepandemianenko.sdtfitness.auth.data.AuthRepositoryImpl
 import com.stepandemianenko.sdtfitness.auth.data.HttpRemoteAuthDataSource
@@ -99,5 +100,10 @@ class AppContainer(context: Context) {
             secureSessionStore = SecureSessionStore(appContext),
             accountSessionManager = accountSessionManager
         )
+    }
+
+    /** Backing store for the ongoing-workout rest-timer hint. */
+    val ongoingWorkoutPreferences: SharedPreferences by lazy {
+        appContext.getSharedPreferences("ongoing_workout_preferences", Context.MODE_PRIVATE)
     }
 }

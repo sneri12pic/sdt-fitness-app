@@ -55,7 +55,7 @@ fun QuickLogRoute(
     accentColor: Color,
     primaryTextColor: Color,
     secondaryTextColor: Color,
-    viewModel: QuickLogViewModel = viewModel()
+    viewModel: QuickLogViewModel = viewModel(factory = QuickLogViewModel.Factory)
 ) {
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
     val successMessage = androidx.compose.ui.res.stringResource(id = R.string.quick_log_saved_message)

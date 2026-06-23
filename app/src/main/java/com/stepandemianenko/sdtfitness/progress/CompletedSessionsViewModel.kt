@@ -1,10 +1,14 @@
 package com.stepandemianenko.sdtfitness.progress
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
-import com.stepandemianenko.sdtfitness.data.AppGraph
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.stepandemianenko.sdtfitness.App
 import com.stepandemianenko.sdtfitness.data.repository.CompletedSessionHistoryItem
+import com.stepandemianenko.sdtfitness.domain.repository.ProgressRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,10 +37,18 @@ data class CompletedSessionItemUiModel(
 )
 
 class CompletedSessionsViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+    private val repository: ProgressRepository
+) : ViewModel() {
 
-    private val repository = AppGraph.progressRepository(application)
+    companion object {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                CompletedSessionsViewModel(
+                    repository = (this[APPLICATION_KEY] as App).container.progressRepository
+                )
+            }
+        }
+    }
 
     private val _uiState = MutableStateFlow(CompletedSessionsUiState())
     val uiState: StateFlow<CompletedSessionsUiState> = _uiState.asStateFlow()

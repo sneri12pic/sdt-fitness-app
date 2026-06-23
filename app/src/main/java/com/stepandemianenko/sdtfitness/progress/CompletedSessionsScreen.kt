@@ -62,7 +62,7 @@ fun CompletedSessionsRoute(
     onWorkoutClick: () -> Unit = {},
     onProgressClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
-    viewModel: CompletedSessionsViewModel = viewModel()
+    viewModel: CompletedSessionsViewModel = viewModel(factory = CompletedSessionsViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
