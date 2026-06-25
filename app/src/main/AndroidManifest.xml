@@ -78,6 +78,20 @@
             android:label="@string/app_name"
             android:theme="@style/Theme.SDTFitnessApp" />
 
+        <activity
+            android:name=".nfc.NfcQuestActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sdtfitness" android:host="quest" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".profile.RoutineReminderReceiver"
             android:exported="false">
