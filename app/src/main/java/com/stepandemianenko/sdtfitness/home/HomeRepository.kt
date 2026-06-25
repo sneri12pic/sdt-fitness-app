@@ -7,6 +7,8 @@ import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordDao
 import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordEntity
 import com.stepandemianenko.sdtfitness.data.local.CreatineIntakeLogDao
 import com.stepandemianenko.sdtfitness.data.local.CreatineIntakeLogEntity
+import com.stepandemianenko.sdtfitness.data.local.WaterIntakeLogDao
+import com.stepandemianenko.sdtfitness.data.local.WaterIntakeLogEntity
 import com.stepandemianenko.sdtfitness.data.local.SyncState
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsDao
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsEntity
@@ -29,6 +31,7 @@ class HomeRepository(
     private val userSettingsDao: UserSettingsDao = database.userSettingsDao()
     private val dailyQuestRecordDao: DailyQuestRecordDao = database.dailyQuestRecordDao()
     private val creatineIntakeLogDao: CreatineIntakeLogDao = database.creatineIntakeLogDao()
+    private val waterIntakeLogDao: WaterIntakeLogDao = database.waterIntakeLogDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _dashboardState = MutableStateFlow(HomeDashboardState())
@@ -215,6 +218,72 @@ class HomeRepository(
         }
     }
 
+    fun addWaterIntakeQuest() {
+        mutateSettings { current, _ ->
+            current.copy(waterQuestEnabled = true)
+        }
+    }
+
+    fun removeWaterIntakeQuest() {
+        mutateSettings { current, _ ->
+            current.copy(waterQuestEnabled = false)
+        }
+    }
+
+    fun addTodayWaterPortion() {
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            val now = System.currentTimeMillis()
+            val todayKey = LocalDate.now().toString()
+            database.withTransaction {
+                val settings = userSettingsDao.getByAccountId(accountId)
+                    ?: defaultSettings(accountId = accountId, now = now)
+                val portionMl = settings.waterPortionMl.coerceAtLeast(1)
+                waterIntakeLogDao.insert(
+                    WaterIntakeLogEntity(
+                        accountId = accountId,
+                        date = todayKey,
+                        amountMl = portionMl,
+                        timestamp = now,
+                        createdAt = now,
+                        updatedAt = now,
+                        syncState = SyncState.LOCAL_ONLY
+                    )
+                )
+            }
+            publishUpdatedState(accountId = accountId)
+        }
+    }
+
+    fun setWaterTarget(targetMl: Int) {
+        require(targetMl > 0) { "Water target must be positive" }
+        mutateSettings { current, _ ->
+            current.copy(waterTargetMl = targetMl)
+        }
+    }
+
+    fun setWaterPortion(portionMl: Int) {
+        require(portionMl > 0) { "Water portion must be positive" }
+        mutateSettings { current, _ ->
+            current.copy(waterPortionMl = portionMl)
+        }
+    }
+
+    fun deleteWaterPortion(logId: Long) {
+        require(logId > 0) { "Water log ID must be positive" }
+        scope.launch {
+            val accountId = accountSessionManager.requireActiveAccountId()
+            val now = System.currentTimeMillis()
+            waterIntakeLogDao.markDeleted(
+                accountId = accountId,
+                logId = logId,
+                deletedAt = now,
+                syncState = SyncState.PENDING_DELETE
+            )
+            publishUpdatedState(accountId = accountId)
+        }
+    }
+
     fun setTodayWeightInCompleted(completed: Boolean) {
         scope.launch {
             val accountId = accountSessionManager.requireActiveAccountId()
@@ -344,9 +413,11 @@ class HomeRepository(
         val todayKey = LocalDate.now().toString()
         val questRecords = dailyQuestRecordDao.getForDate(accountId = accountId, date = todayKey)
         val creatineLogs = creatineIntakeLogDao.getForDate(accountId = accountId, date = todayKey)
+        val waterLogs = waterIntakeLogDao.getForDate(accountId = accountId, date = todayKey)
         _dashboardState.value = settings.toDashboardState(
             questRecords = questRecords,
-            creatineLogs = creatineLogs
+            creatineLogs = creatineLogs,
+            waterLogs = waterLogs
         )
     }
 
@@ -392,7 +463,8 @@ class HomeRepository(
 
     private fun UserSettingsEntity.toDashboardState(
         questRecords: List<DailyQuestRecordEntity>,
-        creatineLogs: List<CreatineIntakeLogEntity>
+        creatineLogs: List<CreatineIntakeLogEntity>,
+        waterLogs: List<WaterIntakeLogEntity>
     ): HomeDashboardState {
         val sourceType = runCatching {
             DailyStepsSourceType.valueOf(dailyStepsSource)
@@ -451,10 +523,17 @@ class HomeRepository(
             .toInt()
         val safeCreatineTarget = creatineTargetGrams.coerceAtLeast(1)
         val creatineQuestCompleted = creatineQuestEnabled && creatineCurrentGrams >= safeCreatineTarget
-        val questsTarget = 1 + weightInQuestEnabled.asCount() + creatineQuestEnabled.asCount()
+        val waterCurrentMl = waterLogs.sumOf { it.amountMl.toLong() }
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+        val safeWaterTarget = waterTargetMl.coerceAtLeast(1)
+        val waterQuestCompleted = waterQuestEnabled && waterCurrentMl >= safeWaterTarget
+        val questsTarget = 1 + weightInQuestEnabled.asCount() + creatineQuestEnabled.asCount() +
+            waterQuestEnabled.asCount()
         val questsCompleted = dailyQuestCompleted.asCount() +
             weightInQuestCompleted.asCount() +
-            creatineQuestCompleted.asCount()
+            creatineQuestCompleted.asCount() +
+            waterQuestCompleted.asCount()
 
         return HomeDashboardState(
             dailyQuest = DailyQuestState(
@@ -480,6 +559,19 @@ class HomeRepository(
                     CreatineIntakeLog(
                         id = log.id,
                         amountGrams = log.amountGrams.coerceAtLeast(0),
+                        timestampMillis = log.timestamp
+                    )
+                }
+            ),
+            waterIntakeQuest = WaterIntakeQuestState(
+                isAdded = waterQuestEnabled,
+                currentMlToday = waterCurrentMl,
+                targetMl = safeWaterTarget,
+                portionMl = waterPortionMl.coerceAtLeast(1),
+                todayLogs = waterLogs.map { log ->
+                    WaterIntakeLog(
+                        id = log.id,
+                        amountMl = log.amountMl.coerceAtLeast(0),
                         timestampMillis = log.timestamp
                     )
                 }

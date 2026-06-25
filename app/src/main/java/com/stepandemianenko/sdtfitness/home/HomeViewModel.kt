@@ -40,6 +40,20 @@ sealed interface HomeUiEvent {
     data class CreatinePortionInputChanged(val value: String) : HomeUiEvent
     data object SaveCreatinePortion : HomeUiEvent
     data class DeleteCreatinePortion(val logId: Long) : HomeUiEvent
+    data object AddWaterIntakeQuest : HomeUiEvent
+    data object RemoveWaterIntakeQuest : HomeUiEvent
+    data object OpenWaterOverlay : HomeUiEvent
+    data object DismissWaterOverlay : HomeUiEvent
+    data object AddWaterPortion : HomeUiEvent
+    data object OpenWaterTargetEditor : HomeUiEvent
+    data object DismissWaterTargetEditor : HomeUiEvent
+    data class WaterTargetInputChanged(val value: String) : HomeUiEvent
+    data object SaveWaterTarget : HomeUiEvent
+    data object OpenWaterPortionEditor : HomeUiEvent
+    data object DismissWaterPortionEditor : HomeUiEvent
+    data class WaterPortionInputChanged(val value: String) : HomeUiEvent
+    data object SaveWaterPortion : HomeUiEvent
+    data class DeleteWaterPortion(val logId: Long) : HomeUiEvent
     data object OpenWeightInChartDialog : HomeUiEvent
     data object DismissWeightInChartDialog : HomeUiEvent
     data class DailyQuestTargetInputChanged(val value: String) : HomeUiEvent
@@ -245,6 +259,106 @@ class HomeViewModel(
                 repository.deleteCreatinePortion(logId = event.logId)
             }
 
+            HomeUiEvent.AddWaterIntakeQuest -> {
+                repository.addWaterIntakeQuest()
+                _uiState.update { it.copy(isAddCustomQuestDialogOpen = false) }
+            }
+
+            HomeUiEvent.RemoveWaterIntakeQuest -> {
+                repository.removeWaterIntakeQuest()
+                _uiState.update {
+                    it.copy(
+                        isWaterOverlayOpen = false,
+                        isWaterTargetEditorOpen = false,
+                        isWaterPortionEditorOpen = false
+                    )
+                }
+            }
+
+            HomeUiEvent.OpenWaterOverlay -> {
+                _uiState.update { it.copy(isWaterOverlayOpen = true) }
+            }
+
+            HomeUiEvent.DismissWaterOverlay -> {
+                _uiState.update {
+                    it.copy(
+                        isWaterOverlayOpen = false,
+                        isWaterTargetEditorOpen = false,
+                        isWaterPortionEditorOpen = false,
+                        waterTargetError = null,
+                        waterPortionError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.AddWaterPortion -> repository.addTodayWaterPortion()
+
+            HomeUiEvent.OpenWaterTargetEditor -> {
+                val target = _uiState.value.dashboard.waterIntakeQuest.targetMl
+                _uiState.update {
+                    it.copy(
+                        isWaterTargetEditorOpen = true,
+                        draftWaterTargetMl = target.toString(),
+                        waterTargetError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.DismissWaterTargetEditor -> {
+                _uiState.update {
+                    it.copy(
+                        isWaterTargetEditorOpen = false,
+                        waterTargetError = null
+                    )
+                }
+            }
+
+            is HomeUiEvent.WaterTargetInputChanged -> {
+                _uiState.update {
+                    it.copy(
+                        draftWaterTargetMl = sanitizeNumericInput(event.value),
+                        waterTargetError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.SaveWaterTarget -> saveWaterTarget()
+
+            HomeUiEvent.OpenWaterPortionEditor -> {
+                val portion = _uiState.value.dashboard.waterIntakeQuest.portionMl
+                _uiState.update {
+                    it.copy(
+                        isWaterPortionEditorOpen = true,
+                        draftWaterPortionMl = portion.toString(),
+                        waterPortionError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.DismissWaterPortionEditor -> {
+                _uiState.update {
+                    it.copy(
+                        isWaterPortionEditorOpen = false,
+                        waterPortionError = null
+                    )
+                }
+            }
+
+            is HomeUiEvent.WaterPortionInputChanged -> {
+                _uiState.update {
+                    it.copy(
+                        draftWaterPortionMl = sanitizeNumericInput(event.value),
+                        waterPortionError = null
+                    )
+                }
+            }
+
+            HomeUiEvent.SaveWaterPortion -> saveWaterPortion()
+
+            is HomeUiEvent.DeleteWaterPortion -> {
+                repository.deleteWaterPortion(logId = event.logId)
+            }
+
             HomeUiEvent.OpenWeightInChartDialog -> openWeightInChartDialog()
 
             HomeUiEvent.DismissWeightInChartDialog -> {
@@ -366,6 +480,38 @@ class HomeViewModel(
             it.copy(
                 isCreatinePortionEditorOpen = false,
                 creatinePortionError = null
+            )
+        }
+    }
+
+    private fun saveWaterTarget() {
+        val target = _uiState.value.draftWaterTargetMl.toIntOrNull()
+        if (target == null || target <= 0) {
+            _uiState.update { it.copy(waterTargetError = "Enter a target greater than 0 ml") }
+            return
+        }
+
+        repository.setWaterTarget(targetMl = target)
+        _uiState.update {
+            it.copy(
+                isWaterTargetEditorOpen = false,
+                waterTargetError = null
+            )
+        }
+    }
+
+    private fun saveWaterPortion() {
+        val portion = _uiState.value.draftWaterPortionMl.toIntOrNull()
+        if (portion == null || portion <= 0) {
+            _uiState.update { it.copy(waterPortionError = "Enter a portion greater than 0 ml") }
+            return
+        }
+
+        repository.setWaterPortion(portionMl = portion)
+        _uiState.update {
+            it.copy(
+                isWaterPortionEditorOpen = false,
+                waterPortionError = null
             )
         }
     }

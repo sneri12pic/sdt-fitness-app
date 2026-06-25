@@ -90,12 +90,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.lifecycleScope
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.home.DailyGoalSummaryState
 import com.stepandemianenko.sdtfitness.home.CreatineIntakeQuestState
+import com.stepandemianenko.sdtfitness.home.WaterIntakeQuestState
 import com.stepandemianenko.sdtfitness.home.DailyQuestState
 import com.stepandemianenko.sdtfitness.home.DailyQuestCompletionSource
 import com.stepandemianenko.sdtfitness.home.DebugAccountUiModel
@@ -189,6 +198,10 @@ private val QuestLogTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.
 private val CreatineDeleteRevealWidth = 72.dp
 private val CreatinePortionRowShape = RoundedCornerShape(12.dp)
 
+// Translucent aqua so the measurement lines and face read through the water.
+private val WaterFill = Color(0x9952C5E8)
+private val WaterFillTop = Color(0xCC3FB6DE)
+
 private enum class HomeScreen {
     Dashboard,
     RestDayDetails,
@@ -231,6 +244,20 @@ fun HomeRoute(
         onCreatinePortionInputChanged = { viewModel.onEvent(HomeUiEvent.CreatinePortionInputChanged(it)) },
         onSaveCreatinePortion = { viewModel.onEvent(HomeUiEvent.SaveCreatinePortion) },
         onDeleteCreatinePortion = { logId -> viewModel.onEvent(HomeUiEvent.DeleteCreatinePortion(logId)) },
+        onAddWaterIntakeQuest = { viewModel.onEvent(HomeUiEvent.AddWaterIntakeQuest) },
+        onRemoveWaterIntakeQuest = { viewModel.onEvent(HomeUiEvent.RemoveWaterIntakeQuest) },
+        onOpenWaterOverlay = { viewModel.onEvent(HomeUiEvent.OpenWaterOverlay) },
+        onDismissWaterOverlay = { viewModel.onEvent(HomeUiEvent.DismissWaterOverlay) },
+        onAddWaterPortion = { viewModel.onEvent(HomeUiEvent.AddWaterPortion) },
+        onOpenWaterTargetEditor = { viewModel.onEvent(HomeUiEvent.OpenWaterTargetEditor) },
+        onDismissWaterTargetEditor = { viewModel.onEvent(HomeUiEvent.DismissWaterTargetEditor) },
+        onWaterTargetInputChanged = { viewModel.onEvent(HomeUiEvent.WaterTargetInputChanged(it)) },
+        onSaveWaterTarget = { viewModel.onEvent(HomeUiEvent.SaveWaterTarget) },
+        onOpenWaterPortionEditor = { viewModel.onEvent(HomeUiEvent.OpenWaterPortionEditor) },
+        onDismissWaterPortionEditor = { viewModel.onEvent(HomeUiEvent.DismissWaterPortionEditor) },
+        onWaterPortionInputChanged = { viewModel.onEvent(HomeUiEvent.WaterPortionInputChanged(it)) },
+        onSaveWaterPortion = { viewModel.onEvent(HomeUiEvent.SaveWaterPortion) },
+        onDeleteWaterPortion = { logId -> viewModel.onEvent(HomeUiEvent.DeleteWaterPortion(logId)) },
         onOpenWeightInChartDialog = { viewModel.onEvent(HomeUiEvent.OpenWeightInChartDialog) },
         onDismissWeightInChartDialog = { viewModel.onEvent(HomeUiEvent.DismissWeightInChartDialog) },
         onSaveRecoveryOption = { viewModel.onEvent(HomeUiEvent.SaveRecoveryOption(it)) },
@@ -276,6 +303,20 @@ fun HomeOneScreen(
     onCreatinePortionInputChanged: (String) -> Unit = {},
     onSaveCreatinePortion: () -> Unit = {},
     onDeleteCreatinePortion: (Long) -> Unit = {},
+    onAddWaterIntakeQuest: () -> Unit = {},
+    onRemoveWaterIntakeQuest: () -> Unit = {},
+    onOpenWaterOverlay: () -> Unit = {},
+    onDismissWaterOverlay: () -> Unit = {},
+    onAddWaterPortion: () -> Unit = {},
+    onOpenWaterTargetEditor: () -> Unit = {},
+    onDismissWaterTargetEditor: () -> Unit = {},
+    onWaterTargetInputChanged: (String) -> Unit = {},
+    onSaveWaterTarget: () -> Unit = {},
+    onOpenWaterPortionEditor: () -> Unit = {},
+    onDismissWaterPortionEditor: () -> Unit = {},
+    onWaterPortionInputChanged: (String) -> Unit = {},
+    onSaveWaterPortion: () -> Unit = {},
+    onDeleteWaterPortion: (Long) -> Unit = {},
     onOpenWeightInChartDialog: () -> Unit = {},
     onDismissWeightInChartDialog: () -> Unit = {},
     onSaveRecoveryOption: (RecoveryOption) -> Unit = {},
@@ -342,6 +383,8 @@ fun HomeOneScreen(
                                 onToggleWeightInQuestCompletion = onToggleWeightInQuestCompletion,
                                 onOpenCreatineOverlay = onOpenCreatineOverlay,
                                 onAddCreatinePortion = onAddCreatinePortion,
+                                onOpenWaterOverlay = onOpenWaterOverlay,
+                                onAddWaterPortion = onAddWaterPortion,
                                 onOpenWeightInChartDialog = onOpenWeightInChartDialog,
                                 onPreviousRoutineMonth = onPreviousRoutineMonth,
                                 onNextRoutineMonth = onNextRoutineMonth,
@@ -425,10 +468,13 @@ fun HomeOneScreen(
                 AddCustomQuestDialog(
                     isWeightInAdded = uiState.dashboard.weightInQuest.isAdded,
                     isCreatineIntakeAdded = uiState.dashboard.creatineIntakeQuest.isAdded,
+                    isWaterIntakeAdded = uiState.dashboard.waterIntakeQuest.isAdded,
                     onAddWeightInQuest = onAddWeightInQuest,
                     onAddCreatineIntakeQuest = onAddCreatineIntakeQuest,
+                    onAddWaterIntakeQuest = onAddWaterIntakeQuest,
                     onRemoveWeightInQuest = onRemoveWeightInQuest,
                     onRemoveCreatineIntakeQuest = onRemoveCreatineIntakeQuest,
+                    onRemoveWaterIntakeQuest = onRemoveWaterIntakeQuest,
                     onDismiss = onDismissAddCustomQuestDialog
                 )
             }
@@ -446,9 +492,10 @@ fun HomeOneScreen(
             }
 
             if (uiState.isCreatineTargetEditorOpen) {
-                CreatineValueDialog(
+                IntakeValueDialog(
                     title = "Set Creatine Target",
                     fieldLabel = "Target grams",
+                    unit = "g",
                     targetValue = uiState.draftCreatineTargetGrams,
                     errorMessage = uiState.creatineTargetError,
                     onTargetChanged = onCreatineTargetInputChanged,
@@ -458,14 +505,53 @@ fun HomeOneScreen(
             }
 
             if (uiState.isCreatinePortionEditorOpen) {
-                CreatineValueDialog(
+                IntakeValueDialog(
                     title = "Set Creatine Portion",
                     fieldLabel = "Portion grams",
+                    unit = "g",
                     targetValue = uiState.draftCreatinePortionGrams,
                     errorMessage = uiState.creatinePortionError,
                     onTargetChanged = onCreatinePortionInputChanged,
                     onDismiss = onDismissCreatinePortionEditor,
                     onSave = onSaveCreatinePortion
+                )
+            }
+
+            if (uiState.isWaterOverlayOpen) {
+                WaterIntakeOverlay(
+                    questState = uiState.dashboard.waterIntakeQuest,
+                    onAddPortion = onAddWaterPortion,
+                    onSetTarget = onOpenWaterTargetEditor,
+                    onSetPortion = onOpenWaterPortionEditor,
+                    onRemoveQuest = onRemoveWaterIntakeQuest,
+                    onDeletePortion = onDeleteWaterPortion,
+                    onDismiss = onDismissWaterOverlay
+                )
+            }
+
+            if (uiState.isWaterTargetEditorOpen) {
+                IntakeValueDialog(
+                    title = "Set Water Target",
+                    fieldLabel = "Target ml",
+                    unit = "ml",
+                    targetValue = uiState.draftWaterTargetMl,
+                    errorMessage = uiState.waterTargetError,
+                    onTargetChanged = onWaterTargetInputChanged,
+                    onDismiss = onDismissWaterTargetEditor,
+                    onSave = onSaveWaterTarget
+                )
+            }
+
+            if (uiState.isWaterPortionEditorOpen) {
+                IntakeValueDialog(
+                    title = "Set Water Portion",
+                    fieldLabel = "Portion ml",
+                    unit = "ml",
+                    targetValue = uiState.draftWaterPortionMl,
+                    errorMessage = uiState.waterPortionError,
+                    onTargetChanged = onWaterPortionInputChanged,
+                    onDismiss = onDismissWaterPortionEditor,
+                    onSave = onSaveWaterPortion
                 )
             }
 
@@ -522,6 +608,8 @@ private fun DashboardContent(
     onToggleWeightInQuestCompletion: () -> Unit,
     onOpenCreatineOverlay: () -> Unit,
     onAddCreatinePortion: () -> Unit,
+    onOpenWaterOverlay: () -> Unit,
+    onAddWaterPortion: () -> Unit,
     onOpenWeightInChartDialog: () -> Unit,
     onPreviousRoutineMonth: () -> Unit,
     onNextRoutineMonth: () -> Unit,
@@ -582,6 +670,13 @@ private fun DashboardContent(
             questState = uiState.dashboard.creatineIntakeQuest,
             onClick = onOpenCreatineOverlay,
             onAddPortion = onAddCreatinePortion
+        )
+    }
+    if (uiState.dashboard.waterIntakeQuest.isAdded) {
+        WaterIntakeQuestCard(
+            questState = uiState.dashboard.waterIntakeQuest,
+            onClick = onOpenWaterOverlay,
+            onAddPortion = onAddWaterPortion
         )
     }
     AddTile(onClick = onOpenAddCustomQuestDialog)
@@ -1348,10 +1443,13 @@ private fun DailyQuestEditorDialog(
 private fun AddCustomQuestDialog(
     isWeightInAdded: Boolean,
     isCreatineIntakeAdded: Boolean,
+    isWaterIntakeAdded: Boolean,
     onAddWeightInQuest: () -> Unit,
     onAddCreatineIntakeQuest: () -> Unit,
+    onAddWaterIntakeQuest: () -> Unit,
     onRemoveWeightInQuest: () -> Unit,
     onRemoveCreatineIntakeQuest: () -> Unit,
+    onRemoveWaterIntakeQuest: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -1382,6 +1480,14 @@ private fun AddCustomQuestDialog(
                     onAddClick = onAddCreatineIntakeQuest,
                     onRemoveClick = onRemoveCreatineIntakeQuest,
                     icon = { CreatineIconContainer() }
+                )
+                SuggestedQuestRow(
+                    title = "Water Intake",
+                    subtitle = "Track today's water intake",
+                    isAdded = isWaterIntakeAdded,
+                    onAddClick = onAddWaterIntakeQuest,
+                    onRemoveClick = onRemoveWaterIntakeQuest,
+                    icon = { WaterIconContainer() }
                 )
                 DialogSectionLabel(text = "Custom Quests")
                 Text(
@@ -1581,8 +1687,9 @@ private fun CreatineIntakeOverlay(
                 } else {
                     questState.todayLogs.forEach { log ->
                         key(log.id) {
-                            SwipeToRevealCreatinePortionRow(
-                                amountGrams = log.amountGrams,
+                            SwipeToRevealPortionRow(
+                                amount = log.amountGrams,
+                                unit = "g",
                                 timestampMillis = log.timestampMillis,
                                 isOpen = openLogId == log.id,
                                 onDragStarted = { openLogId = log.id },
@@ -1616,8 +1723,9 @@ private fun CreatineIntakeOverlay(
 }
 
 @Composable
-private fun SwipeToRevealCreatinePortionRow(
-    amountGrams: Int,
+private fun SwipeToRevealPortionRow(
+    amount: Int,
+    unit: String,
     timestampMillis: Long,
     isOpen: Boolean,
     onDragStarted: () -> Unit,
@@ -1662,7 +1770,7 @@ private fun SwipeToRevealCreatinePortionRow(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.start_workout_icon_bin),
-                contentDescription = "Delete creatine portion",
+                contentDescription = "Delete portion",
                 modifier = Modifier.size(24.dp),
                 contentScale = ContentScale.Fit
             )
@@ -1692,7 +1800,7 @@ private fun SwipeToRevealCreatinePortionRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "+$amountGrams g",
+                text = "+$amount $unit",
                 color = PrimaryText,
                 fontWeight = FontWeight.SemiBold
             )
@@ -1706,9 +1814,10 @@ private fun SwipeToRevealCreatinePortionRow(
 }
 
 @Composable
-private fun CreatineValueDialog(
+private fun IntakeValueDialog(
     title: String,
     fieldLabel: String,
+    unit: String,
     targetValue: String,
     errorMessage: String?,
     onTargetChanged: (String) -> Unit,
@@ -1730,7 +1839,7 @@ private fun CreatineValueDialog(
                 value = targetValue,
                 onValueChange = onTargetChanged,
                 label = { Text(fieldLabel) },
-                suffix = { Text("g") },
+                suffix = { Text(unit) },
                 singleLine = true,
                 isError = errorMessage != null,
                 supportingText = errorMessage?.let { message ->
@@ -1891,6 +2000,319 @@ private fun CreatineIntakeQuestCard(
             )
         }
     }
+}
+
+/**
+ * The cute jar with water that rises to [progress] (0..1) and ripples with a slow wave.
+ * Water is drawn translucent over the jar art so the measurement lines and face show through,
+ * matching the keyframe sketches.
+ */
+@Composable
+private fun WaterJar(
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 700),
+        label = "waterFill"
+    )
+    val wavePhase by rememberInfiniteTransition(label = "waterWave").animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = LinearEasing)
+        ),
+        label = "wavePhase"
+    )
+
+    Box(modifier = modifier) {
+        Image(
+            painter = painterResource(id = R.drawable.water_jar),
+            contentDescription = null,
+            modifier = Modifier.matchParentSize(),
+            contentScale = ContentScale.Fit
+        )
+        Canvas(modifier = Modifier.matchParentSize()) {
+            if (animatedProgress <= 0f) return@Canvas
+            // ponytail: measured from water_jar.png pixels (cream interior); nudge if the art changes.
+            val left = size.width * 0.175f
+            val right = size.width * 0.825f
+            val bottom = size.height * 0.955f // jar base
+            val topAtFull = size.height * 0.45f // water level at goal: ~2/3 up, keeps the face clear
+
+            val waterTop = bottom - (bottom - topAtFull) * animatedProgress
+            // ponytail: bottomTaper pulls the base corners inward to follow the jar's curved bottom.
+            val bottomTaper = size.width * 0.03f
+            val corner = size.height * 0.05f
+            val interiorTop = size.height * 0.20f
+            val interior = Path().apply {
+                moveTo(left, interiorTop)
+                lineTo(left, bottom - corner)
+                quadraticBezierTo(left, bottom, left + bottomTaper + corner, bottom)
+                lineTo(right - bottomTaper - corner, bottom)
+                quadraticBezierTo(right, bottom, right, bottom - corner)
+                lineTo(right, interiorTop)
+                close()
+            }
+            clipPath(interior) {
+                val amplitude = size.height * 0.014f
+                val width = right - left
+                val step = width / 48f
+                val wave = Path().apply {
+                    moveTo(left, bottom)
+                    lineTo(left, waterTop)
+                    var x = left
+                    while (x <= right) {
+                        val theta = wavePhase + (x - left) / width * (2f * PI.toFloat() * 1.5f)
+                        lineTo(x, waterTop + sin(theta) * amplitude)
+                        x += step
+                    }
+                    lineTo(right, bottom)
+                    close()
+                }
+                drawPath(wave, color = WaterFill)
+                drawPath(wave, color = WaterFillTop, style = Stroke(width = size.height * 0.006f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun WaterIconContainer() {
+    Box(
+        modifier = Modifier
+            .size(50.dp)
+            .clip(CircleShape)
+            .background(Color(0xBBF88863)),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.water_jar),
+            contentDescription = null,
+            modifier = Modifier.size(36.dp),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@Composable
+private fun WaterIntakeQuestCard(
+    questState: WaterIntakeQuestState,
+    onClick: () -> Unit,
+    onAddPortion: () -> Unit
+) {
+    HomeCard(
+        modifier = Modifier.clickable(onClick = onClick),
+        horizontalPadding = 10.dp,
+        verticalPadding = 10.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            WaterIconContainer()
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Water Intake",
+                    color = PrimaryText,
+                    fontSize = 18.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "${questState.currentMlToday}ml / ${questState.targetMl}ml today",
+                    color = SecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            QuestStatusPill(
+                text = "+ ${questState.portionMl}ml",
+                backgroundColor = if (questState.progress >= 1f) SoftGreen else ActionColor,
+                textColor = if (questState.progress >= 1f) PrimaryText else Color(0xFFFCE8DA),
+                onClick = onAddPortion
+            )
+        }
+    }
+}
+
+@Composable
+private fun WaterIntakeOverlay(
+    questState: WaterIntakeQuestState,
+    onAddPortion: () -> Unit,
+    onSetTarget: () -> Unit,
+    onSetPortion: () -> Unit,
+    onRemoveQuest: () -> Unit,
+    onDeletePortion: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var isMenuExpanded by remember { mutableStateOf(false) }
+    var openLogId by remember { mutableStateOf<Long?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBackground,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Water Intake",
+                    color = PrimaryText,
+                    fontWeight = FontWeight.Bold
+                )
+                Box {
+                    IconButton(onClick = { isMenuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "Water intake settings",
+                            tint = PrimaryText
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = isMenuExpanded,
+                        onDismissRequest = { isMenuExpanded = false },
+                        containerColor = CardBackground
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Set target", color = PrimaryText) },
+                            onClick = {
+                                isMenuExpanded = false
+                                onSetTarget()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Set portion", color = PrimaryText) },
+                            onClick = {
+                                isMenuExpanded = false
+                                onSetPortion()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove quest", color = ActionColor) },
+                            onClick = {
+                                isMenuExpanded = false
+                                onRemoveQuest()
+                            }
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFFFFEFE5))
+                        .padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    WaterJar(
+                        progress = questState.progress,
+                        modifier = Modifier.size(160.dp)
+                    )
+                    Text(
+                        text = "${questState.currentMlToday}ml / ${questState.targetMl}ml",
+                        color = PrimaryText,
+                        fontSize = 28.sp,
+                        lineHeight = 30.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(ProgressTrack)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(questState.progress)
+                                .height(10.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(ActionColor)
+                        )
+                    }
+                    Text(
+                        text = "Daily target: ${questState.targetMl} ml",
+                        color = SecondaryText,
+                        fontSize = 13.sp,
+                        lineHeight = 15.sp
+                    )
+                    Button(
+                        onClick = onAddPortion,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ActionColor,
+                            contentColor = Color(0xFFFCE8DA)
+                        ),
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text(
+                            text = "+ ${questState.portionMl}ml",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                DialogSectionLabel(text = "Today's portions")
+                if (questState.todayLogs.isEmpty()) {
+                    Text(
+                        text = "No portions logged yet.",
+                        color = SecondaryText,
+                        fontSize = 14.sp
+                    )
+                } else {
+                    questState.todayLogs.forEach { log ->
+                        key(log.id) {
+                            SwipeToRevealPortionRow(
+                                amount = log.amountMl,
+                                unit = "ml",
+                                timestampMillis = log.timestampMillis,
+                                isOpen = openLogId == log.id,
+                                onDragStarted = { openLogId = log.id },
+                                onOpenChanged = { isOpen ->
+                                    openLogId = if (isOpen) {
+                                        log.id
+                                    } else {
+                                        openLogId.takeUnless { it == log.id }
+                                    }
+                                },
+                                onDelete = {
+                                    openLogId = null
+                                    onDeletePortion(log.id)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Close",
+                    color = PrimaryText,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    )
 }
 
 @Composable

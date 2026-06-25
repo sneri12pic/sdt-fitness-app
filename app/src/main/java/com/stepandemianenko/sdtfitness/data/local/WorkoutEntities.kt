@@ -106,6 +106,9 @@ data class UserSettingsEntity(
     @ColumnInfo(defaultValue = "0") val creatineQuestEnabled: Boolean = false,
     @ColumnInfo(defaultValue = "5") val creatineTargetGrams: Int = 5,
     @ColumnInfo(defaultValue = "5") val creatinePortionGrams: Int = 5,
+    @ColumnInfo(defaultValue = "0") val waterQuestEnabled: Boolean = false,
+    @ColumnInfo(defaultValue = "2000") val waterTargetMl: Int = 2000,
+    @ColumnInfo(defaultValue = "250") val waterPortionMl: Int = 250,
     @ColumnInfo(defaultValue = "") val routineGoalId: String = "",
     @ColumnInfo(defaultValue = "") val routineFrequencyId: String = "",
     @ColumnInfo(defaultValue = "") val routineDayIdsCsv: String = "",
@@ -185,6 +188,34 @@ data class CreatineIntakeLogEntity(
     val accountId: String,
     val date: String,
     val amountGrams: Int,
+    val timestamp: Long,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deletedAt: Long? = null,
+    val syncState: String = SyncState.LOCAL_ONLY
+)
+
+@Entity(
+    tableName = "water_intake_logs",
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["accountId", "date"]),
+        Index(value = ["accountId", "date", "timestamp"]),
+        Index(value = ["updatedAt"])
+    ]
+)
+data class WaterIntakeLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val accountId: String,
+    val date: String,
+    val amountMl: Int,
     val timestamp: Long,
     val createdAt: Long,
     val updatedAt: Long,

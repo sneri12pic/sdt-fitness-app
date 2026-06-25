@@ -73,6 +73,27 @@ data class CreatineIntakeQuestState(
         }
 }
 
+data class WaterIntakeLog(
+    val id: Long,
+    val amountMl: Int,
+    val timestampMillis: Long
+)
+
+data class WaterIntakeQuestState(
+    val isAdded: Boolean = false,
+    val currentMlToday: Int = 0,
+    val targetMl: Int = 2000,
+    val portionMl: Int = 250,
+    val todayLogs: List<WaterIntakeLog> = emptyList()
+) {
+    val progress: Float
+        get() = if (targetMl <= 0) {
+            0f
+        } else {
+            (currentMlToday.toFloat() / targetMl.toFloat()).coerceIn(0f, 1f)
+        }
+}
+
 data class DailyGoalSummaryState(
     val stepsCurrent: Int = 0,
     val stepsTarget: Int = 5_000,
@@ -100,6 +121,7 @@ data class HomeDashboardState(
     val dailyQuest: DailyQuestState = DailyQuestState(),
     val weightInQuest: WeightInQuestState = WeightInQuestState(),
     val creatineIntakeQuest: CreatineIntakeQuestState = CreatineIntakeQuestState(),
+    val waterIntakeQuest: WaterIntakeQuestState = WaterIntakeQuestState(),
     val dailyGoalSummary: DailyGoalSummaryState = DailyGoalSummaryState(),
     val routineStreakDates: Set<LocalDate> = emptySet(),
     val restDay: RestDayUiState = RestDayUiState(),
@@ -127,6 +149,9 @@ data class HomeUiState(
     val isCreatineOverlayOpen: Boolean = false,
     val isCreatineTargetEditorOpen: Boolean = false,
     val isCreatinePortionEditorOpen: Boolean = false,
+    val isWaterOverlayOpen: Boolean = false,
+    val isWaterTargetEditorOpen: Boolean = false,
+    val isWaterPortionEditorOpen: Boolean = false,
     val weightInChart: SetMetricChartUiModel = emptyHomeWeightChart(),
     val draftTargetSteps: String = "",
     val draftCurrentSteps: String = "",
@@ -134,6 +159,10 @@ data class HomeUiState(
     val creatineTargetError: String? = null,
     val draftCreatinePortionGrams: String = "",
     val creatinePortionError: String? = null,
+    val draftWaterTargetMl: String = "",
+    val waterTargetError: String? = null,
+    val draftWaterPortionMl: String = "",
+    val waterPortionError: String? = null,
     val activeAccountId: String? = null,
     val accounts: List<DebugAccountUiModel> = emptyList(),
     val pendingHealthConnectStepsToAdd: Int? = null

@@ -41,7 +41,11 @@ class NfcQuestActivity : Activity() {
                 container.homeRepository.addTodayCreatinePortion()
                 toast("Creatine portion logged")
             }
-            // ponytail: one quest for now; add cases here as you make more stickers.
+            "water" -> {
+                container.homeRepository.addTodayWaterPortion()
+                toast("Water portion logged")
+            }
+            // ponytail: add cases here as you make more stickers.
             else -> toast("Unknown quest: $questId")
         }
     }

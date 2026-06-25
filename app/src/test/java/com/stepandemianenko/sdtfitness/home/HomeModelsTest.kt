@@ -51,6 +51,20 @@ class HomeModelsTest {
     }
 
     @Test
+    fun waterProgress_returnsFractionOfTargetAndCapsAtComplete() {
+        assertEquals(
+            0.5f,
+            WaterIntakeQuestState(currentMlToday = 1000, targetMl = 2000).progress,
+            0.001f
+        )
+        assertEquals(
+            1f,
+            WaterIntakeQuestState(currentMlToday = 2500, targetMl = 2000).progress,
+            0.001f
+        )
+    }
+
+    @Test
     fun dailyGoalSummaryOverallProgress_averagesStepsWorkoutsAndQuests() {
         val summary = DailyGoalSummaryState(
             stepsCurrent = 2_500,
