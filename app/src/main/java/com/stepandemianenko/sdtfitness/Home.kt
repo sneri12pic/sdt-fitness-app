@@ -9,7 +9,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -72,8 +74,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -81,6 +86,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -88,6 +94,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
@@ -381,6 +388,9 @@ fun HomeOneScreen(
                                 onOpenDailyQuestEditor = onOpenDailyQuestEditor,
                                 onOpenAddCustomQuestDialog = onOpenAddCustomQuestDialog,
                                 onToggleWeightInQuestCompletion = onToggleWeightInQuestCompletion,
+                                onRemoveWeightInQuest = onRemoveWeightInQuest,
+                                onRemoveCreatineIntakeQuest = onRemoveCreatineIntakeQuest,
+                                onRemoveWaterIntakeQuest = onRemoveWaterIntakeQuest,
                                 onOpenCreatineOverlay = onOpenCreatineOverlay,
                                 onAddCreatinePortion = onAddCreatinePortion,
                                 onOpenWaterOverlay = onOpenWaterOverlay,
@@ -606,6 +616,9 @@ private fun DashboardContent(
     onOpenDailyQuestEditor: () -> Unit,
     onOpenAddCustomQuestDialog: () -> Unit,
     onToggleWeightInQuestCompletion: () -> Unit,
+    onRemoveWeightInQuest: () -> Unit,
+    onRemoveCreatineIntakeQuest: () -> Unit,
+    onRemoveWaterIntakeQuest: () -> Unit,
     onOpenCreatineOverlay: () -> Unit,
     onAddCreatinePortion: () -> Unit,
     onOpenWaterOverlay: () -> Unit,
@@ -662,21 +675,24 @@ private fun DashboardContent(
         WeightInQuestCard(
             questState = uiState.dashboard.weightInQuest,
             onClick = onOpenWeightInChartDialog,
-            onToggleDoneClick = onToggleWeightInQuestCompletion
+            onToggleDoneClick = onToggleWeightInQuestCompletion,
+            onRemove = onRemoveWeightInQuest
         )
     }
     if (uiState.dashboard.creatineIntakeQuest.isAdded) {
         CreatineIntakeQuestCard(
             questState = uiState.dashboard.creatineIntakeQuest,
             onClick = onOpenCreatineOverlay,
-            onAddPortion = onAddCreatinePortion
+            onAddPortion = onAddCreatinePortion,
+            onRemove = onRemoveCreatineIntakeQuest
         )
     }
     if (uiState.dashboard.waterIntakeQuest.isAdded) {
         WaterIntakeQuestCard(
             questState = uiState.dashboard.waterIntakeQuest,
             onClick = onOpenWaterOverlay,
-            onAddPortion = onAddWaterPortion
+            onAddPortion = onAddWaterPortion,
+            onRemove = onRemoveWaterIntakeQuest
         )
     }
     AddTile(onClick = onOpenAddCustomQuestDialog)
@@ -1962,43 +1978,22 @@ private fun CreatineIconContainer() {
 private fun CreatineIntakeQuestCard(
     questState: CreatineIntakeQuestState,
     onClick: () -> Unit,
-    onAddPortion: () -> Unit
+    onAddPortion: () -> Unit,
+    onRemove: () -> Unit
 ) {
-    HomeCard(
-        modifier = Modifier.clickable(onClick = onClick),
-        horizontalPadding = 10.dp,
-        verticalPadding = 10.dp
+    QuestCard(
+        icon = { CreatineIconContainer() },
+        title = "Creatine Intake",
+        subtitle = "${questState.currentGramsToday}g / ${questState.targetGrams}g today",
+        onClick = onClick,
+        onRemove = onRemove
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CreatineIconContainer()
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Creatine Intake",
-                    color = PrimaryText,
-                    fontSize = 18.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "${questState.currentGramsToday}g / ${questState.targetGrams}g today",
-                    color = SecondaryText,
-                    fontSize = 13.sp,
-                    lineHeight = 15.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            QuestStatusPill(
-                text = "+ ${questState.portionGrams}g",
-                backgroundColor = if (questState.progress >= 1f) SoftGreen else ActionColor,
-                textColor = if (questState.progress >= 1f) PrimaryText else Color(0xFFFCE8DA),
-                onClick = onAddPortion
-            )
-        }
+        QuestStatusPill(
+            text = "+ ${questState.portionGrams}g",
+            backgroundColor = if (questState.progress >= 1f) SoftGreen else ActionColor,
+            textColor = if (questState.progress >= 1f) PrimaryText else Color(0xFFFCE8DA),
+            onClick = onAddPortion
+        )
     }
 }
 
@@ -2100,43 +2095,22 @@ private fun WaterIconContainer() {
 private fun WaterIntakeQuestCard(
     questState: WaterIntakeQuestState,
     onClick: () -> Unit,
-    onAddPortion: () -> Unit
+    onAddPortion: () -> Unit,
+    onRemove: () -> Unit
 ) {
-    HomeCard(
-        modifier = Modifier.clickable(onClick = onClick),
-        horizontalPadding = 10.dp,
-        verticalPadding = 10.dp
+    QuestCard(
+        icon = { WaterIconContainer() },
+        title = "Water Intake",
+        subtitle = "${questState.currentMlToday}ml / ${questState.targetMl}ml today",
+        onClick = onClick,
+        onRemove = onRemove
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            WaterIconContainer()
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Water Intake",
-                    color = PrimaryText,
-                    fontSize = 18.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "${questState.currentMlToday}ml / ${questState.targetMl}ml today",
-                    color = SecondaryText,
-                    fontSize = 13.sp,
-                    lineHeight = 15.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            QuestStatusPill(
-                text = "+ ${questState.portionMl}ml",
-                backgroundColor = if (questState.progress >= 1f) SoftGreen else ActionColor,
-                textColor = if (questState.progress >= 1f) PrimaryText else Color(0xFFFCE8DA),
-                onClick = onAddPortion
-            )
-        }
+        QuestStatusPill(
+            text = "+ ${questState.portionMl}ml",
+            backgroundColor = if (questState.progress >= 1f) SoftGreen else ActionColor,
+            textColor = if (questState.progress >= 1f) PrimaryText else Color(0xFFFCE8DA),
+            onClick = onAddPortion
+        )
     }
 }
 
@@ -2319,48 +2293,27 @@ private fun WaterIntakeOverlay(
 private fun WeightInQuestCard(
     questState: WeightInQuestState,
     onClick: () -> Unit,
-    onToggleDoneClick: () -> Unit
+    onToggleDoneClick: () -> Unit,
+    onRemove: () -> Unit
 ) {
-    HomeCard(
-        modifier = Modifier.clickable(onClick = onClick),
-        horizontalPadding = 10.dp,
-        verticalPadding = 10.dp
+    QuestCard(
+        icon = { CircleIconContainer(iconRes = R.drawable.orange_scales) },
+        title = "Weight-In",
+        subtitle = when {
+            questState.isCompleted && questState.completionSource == DailyQuestCompletionSource.HEALTH_CONNECT ->
+                "Synced from Health Connect: ${formatWeightInValue(questState.weightKg)}"
+            questState.isCompleted -> "Completed today"
+            else -> "Weigh yourself today"
+        },
+        onClick = onClick,
+        onRemove = onRemove
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CircleIconContainer(iconRes = R.drawable.orange_scales)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Weight-In",
-                    color = PrimaryText,
-                    fontSize = 18.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = when {
-                        questState.isCompleted && questState.completionSource == DailyQuestCompletionSource.HEALTH_CONNECT ->
-                            "Synced from Health Connect: ${formatWeightInValue(questState.weightKg)}"
-                        questState.isCompleted -> "Completed today"
-                        else -> "Weigh yourself today"
-                    },
-                    color = SecondaryText,
-                    fontSize = 13.sp,
-                    lineHeight = 15.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            QuestStatusPill(
-                text = if (questState.isCompleted) "✓" else "Done",
-                backgroundColor = if (questState.isCompleted) SoftGreen else ActionColor,
-                textColor = if (questState.isCompleted) PrimaryText else Color(0xFFFCE8DA),
-                onClick = onToggleDoneClick
-            )
-        }
+        QuestStatusPill(
+            text = if (questState.isCompleted) "✓" else "Done",
+            backgroundColor = if (questState.isCompleted) SoftGreen else ActionColor,
+            textColor = if (questState.isCompleted) PrimaryText else Color(0xFFFCE8DA),
+            onClick = onToggleDoneClick
+        )
     }
 }
 
@@ -2388,6 +2341,90 @@ private fun QuestStatusPill(
             lineHeight = 12.sp,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+/**
+ * Shared shell for every *added* Home quest (Weight-In, Creatine, Water, …).
+ *
+ * One layout (icon + title + subtitle + a [trailing] action slot) and one set of gestures: tap runs
+ * [onClick]; long-press buzzes and opens a Copy / Remove menu. Copy drops "Title: subtitle" on the
+ * clipboard; Remove runs [onRemove]. Build new quest cards on this so they can't drift apart again.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun QuestCard(
+    icon: @Composable () -> Unit,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+    trailing: @Composable () -> Unit
+) {
+    val haptics = LocalHapticFeedback.current
+    val clipboard = LocalClipboardManager.current
+    var menuOpen by remember { mutableStateOf(false) }
+
+    Box {
+        HomeCard(
+            modifier = Modifier.combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    menuOpen = true
+                }
+            ),
+            horizontalPadding = 10.dp,
+            verticalPadding = 10.dp
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                icon()
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        color = PrimaryText,
+                        fontSize = 18.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = subtitle,
+                        color = SecondaryText,
+                        fontSize = 13.sp,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                trailing()
+            }
+        }
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+            modifier = Modifier.background(CardBackground),
+            // ponytail: non-focusable so the popup doesn't eat touches — list still scrolls while it's open.
+            properties = PopupProperties(focusable = false)
+        ) {
+            DropdownMenuItem(
+                text = { Text("Copy", color = PrimaryText) },
+                onClick = {
+                    clipboard.setText(AnnotatedString("$title: $subtitle"))
+                    menuOpen = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Remove", color = PrimaryText) },
+                onClick = {
+                    onRemove()
+                    menuOpen = false
+                }
+            )
+        }
     }
 }
 
