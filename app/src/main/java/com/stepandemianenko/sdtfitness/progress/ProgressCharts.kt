@@ -71,7 +71,7 @@ private val ProgressRangeChipBg = Color(0xFFEBCBC0)
 
 // Discrete zoom levels, ordered from most zoomed-in (SESSION, per-set entries of the reviewed
 // session) to most zoomed-out (THREE_MONTHS). Pinch-to-zoom steps through this order.
-private enum class ChartRangeMode(
+internal enum class ChartRangeMode(
     val label: String,
     val days: Int
 ) {
@@ -80,7 +80,7 @@ private enum class ChartRangeMode(
     THREE_MONTHS("3 months", 90)
 }
 
-private enum class ChartMetricKind {
+internal enum class ChartMetricKind {
     WEIGHT,
     REPS,
     GENERIC
@@ -708,13 +708,13 @@ private fun RangeModeControl(
     }
 }
 
-private data class AxisScale(
+internal data class AxisScale(
     val minValue: Float,
     val maxValue: Float,
     val labelsDescending: List<Float>
 )
 
-private fun buildDynamicAxisScale(
+internal fun buildDynamicAxisScale(
     values: List<Float>,
     metricKind: ChartMetricKind,
     labelCount: Int
@@ -767,7 +767,7 @@ private fun buildDynamicAxisScale(
     )
 }
 
-private fun resolveMetricKind(unitLabel: String): ChartMetricKind {
+internal fun resolveMetricKind(unitLabel: String): ChartMetricKind {
     val normalized = unitLabel.trim().lowercase(Locale.ENGLISH)
     return when {
         normalized.contains("kg") -> ChartMetricKind.WEIGHT
@@ -800,7 +800,7 @@ private fun chooseBaseStep(
     }
 }
 
-private data class VisibleSeries(
+internal data class VisibleSeries(
     val actualValues: List<Float>,
     val targetValues: List<Float?>,
     // One label per visible point, used to render the date (or set #) x-axis under the chart.
@@ -821,7 +821,7 @@ private val XAxisDateFormatter: DateTimeFormatter =
  * Charts without timestamps (Home weight dialog, Progress) are not time trends and are returned
  * unchanged so they keep showing their full series with no x-axis labels.
  */
-private fun buildVisibleSeries(
+internal fun buildVisibleSeries(
     actualValues: List<Float>,
     targetValues: List<Float?>,
     sessionSetValues: List<Float>,
@@ -868,7 +868,7 @@ private fun buildVisibleSeries(
  * Thins a per-point label list down to at most three evenly-spaced labels (first / middle / last)
  * so the x-axis stays readable when many points are visible.
  */
-private fun selectXAxisLabels(pointLabels: List<String>): List<String> {
+internal fun selectXAxisLabels(pointLabels: List<String>): List<String> {
     return when {
         pointLabels.size <= 3 -> pointLabels
         else -> listOf(
