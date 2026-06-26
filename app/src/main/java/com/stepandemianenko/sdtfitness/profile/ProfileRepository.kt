@@ -79,6 +79,17 @@ class ProfileRepository(
         )
     }
 
+    /** App-generated data summary for the Health Connect hub (workouts all-time, water today). */
+    suspend fun inAppShareSummary(): InAppShareSummary {
+        val accountId = accountSessionManager.requireActiveAccountId()
+        val today = LocalDate.now().toString()
+        val waterMlToday = waterLogDao.getForDate(accountId, today).sumOf { it.amountMl.coerceAtLeast(0) }
+        return InAppShareSummary(
+            workoutsCompleted = sessionDao.countByStatus(accountId, WorkoutSessionStatus.COMPLETED),
+            waterMlToday = waterMlToday
+        )
+    }
+
     /** Times each quest was completed within [range], one entry per quest, for the bar chart. */
     suspend fun questCounts(range: QuestChartRange): List<QuestBarPoint> {
         val accountId = accountSessionManager.requireActiveAccountId()

@@ -1,7 +1,9 @@
 package com.stepandemianenko.sdtfitness.data.health
 
 import android.content.Context
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.WeightRecord
@@ -46,6 +48,17 @@ class HealthConnectManager(
         if (!isAvailable()) return false
         val granted = healthConnectClient().permissionController.getGrantedPermissions()
         return granted.containsAll(readPermissions)
+    }
+
+    /** Contract to launch the Health Connect permission sheet; pass [readPermissions] when launching. */
+    fun requestPermissionsContract(): ActivityResultContract<Set<String>, Set<String>> {
+        return PermissionController.createRequestPermissionResultContract()
+    }
+
+    /** Revoke everything we were granted — the "Disconnect from Health Connect" action. */
+    suspend fun disconnect() {
+        if (!isAvailable()) return
+        healthConnectClient().permissionController.revokeAllPermissions()
     }
 
     suspend fun readTodaySteps(): Long {

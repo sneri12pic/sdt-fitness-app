@@ -188,7 +188,8 @@ private val ProfileBottomInsetCorner = 16.dp
 
 private enum class ProfileScreen {
     Overview,
-    YourRoutine
+    YourRoutine,
+    HealthConnect
 }
 
 private data class RoutineGoalOption(
@@ -347,7 +348,8 @@ fun ProfileRoute(
                                 },
                                 onSettingsClick = { isSettingsDialogOpen = true },
                                 onSignOutClick = { isSignOutDialogOpen = true },
-                                onQuestsClick = { viewModel.onEvent(ProfileUiEvent.OpenQuestChart) }
+                                onQuestsClick = { viewModel.onEvent(ProfileUiEvent.OpenQuestChart) },
+                                onHealthConnectClick = { activeScreen = ProfileScreen.HealthConnect }
                             )
 
                             ProfileScreen.YourRoutine -> RoutineSetupContent(
@@ -378,6 +380,10 @@ fun ProfileRoute(
                                     viewModel.onEvent(ProfileUiEvent.SaveRoutine)
                                 },
                                 onSkipForNowClick = { activeScreen = ProfileScreen.Overview }
+                            )
+
+                            ProfileScreen.HealthConnect -> HealthConnectScreen(
+                                onBackClick = { activeScreen = ProfileScreen.Overview }
                             )
                         }
                     }
@@ -451,7 +457,8 @@ private fun ProfileOverviewContent(
     onToggleReminders: () -> Unit,
     onSettingsClick: () -> Unit,
     onSignOutClick: () -> Unit,
-    onQuestsClick: () -> Unit
+    onQuestsClick: () -> Unit,
+    onHealthConnectClick: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -555,8 +562,7 @@ private fun ProfileOverviewContent(
                 leading = { ProfileImageIcon(R.drawable.profile_row_health_connect, 22.dp) },
                 title = "Health Connect",
                 subtitle = "Sync steps and weight",
-                // ponytail: no dedicated HC settings screen yet — inert for now.
-                onClick = {}
+                onClick = onHealthConnectClick
             )
             ProfileMenuRow(
                 // ponytail: reuse the existing Weight-In scales art for Units.
