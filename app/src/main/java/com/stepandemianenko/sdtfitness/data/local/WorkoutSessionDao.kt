@@ -62,6 +62,16 @@ interface WorkoutSessionDao {
 
     @Query(
         """
+        SELECT COUNT(*) FROM workout_sessions
+        WHERE accountId = :accountId
+          AND status = :status
+          AND deletedAt IS NULL
+        """
+    )
+    suspend fun countByStatus(accountId: String, status: String): Int
+
+    @Query(
+        """
         UPDATE workout_sessions
         SET status = :newStatus, completedAt = :endedAt, updatedAt = :endedAt
         WHERE accountId = :accountId

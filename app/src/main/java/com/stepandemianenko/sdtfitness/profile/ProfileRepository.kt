@@ -2,10 +2,15 @@ package com.stepandemianenko.sdtfitness.profile
 
 import androidx.room.withTransaction
 import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.local.AccountType
+import com.stepandemianenko.sdtfitness.data.local.DailyQuestId
 import com.stepandemianenko.sdtfitness.data.local.SyncState
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsDao
 import com.stepandemianenko.sdtfitness.data.local.UserSettingsEntity
 import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
+import com.stepandemianenko.sdtfitness.data.local.WorkoutSessionStatus
+import com.stepandemianenko.sdtfitness.home.calculateCurrentStreak
+import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,20 +26,68 @@ class ProfileRepository(
     private val reminderScheduler: RoutineReminderScheduler
 ) {
     private val userSettingsDao: UserSettingsDao = database.userSettingsDao()
+    private val accountDao = database.accountDao()
+    private val sessionDao = database.workoutSessionDao()
+    private val questRecordDao = database.dailyQuestRecordDao()
+    private val creatineLogDao = database.creatineIntakeLogDao()
+    private val waterLogDao = database.waterIntakeLogDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _routineSettings = MutableStateFlow(RoutineSettings())
     val routineSettings: StateFlow<RoutineSettings> = _routineSettings.asStateFlow()
 
+    private val _overview = MutableStateFlow(ProfileOverview())
+    val overview: StateFlow<ProfileOverview> = _overview.asStateFlow()
+
     init {
         scope.launch {
             accountSessionManager.accountScope.collectLatest { scopeKey ->
                 publishRoutine(accountId = scopeKey.accountId)
+                publishOverview(accountId = scopeKey.accountId)
             }
         }
         scope.launch {
-            publishRoutine(accountId = accountSessionManager.requireActiveAccountId())
+            val accountId = accountSessionManager.requireActiveAccountId()
+            publishRoutine(accountId = accountId)
+            publishOverview(accountId = accountId)
         }
+    }
+
+    /**
+     * Account identity + all-time stats. Recomputed when the active account changes; a profile
+     * screen doesn't need live-ticking counts, so this isn't wired to every workout/quest write.
+     * ponytail: refresh-on-account-switch only; observe the source DAOs if live updates matter.
+     */
+    private suspend fun publishOverview(accountId: String) {
+        val account = accountDao.getById(accountId)
+        val settings = userSettingsDao.getByAccountId(accountId)
+        val streakDates = settings?.routineCompletedDatesCsv
+            ?.let(::decodeCsv)
+            ?.mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?.toSet()
+            ?: emptySet()
+        _overview.value = ProfileOverview(
+            displayName = account?.displayName?.takeIf { it.isNotBlank() }
+                ?: account?.email?.substringBefore("@")?.takeIf { it.isNotBlank() }
+                ?: "Guest",
+            isGuest = (account?.type ?: AccountType.GUEST) == AccountType.GUEST,
+            stats = ProfileStats(
+                workouts = sessionDao.countByStatus(accountId, WorkoutSessionStatus.COMPLETED),
+                streakDays = calculateCurrentStreak(streakDates, LocalDate.now()),
+                questsDone = questRecordDao.countCompleted(accountId)
+            )
+        )
+    }
+
+    /** Times each quest was completed within [range], one entry per quest, for the bar chart. */
+    suspend fun questCounts(range: QuestChartRange): List<QuestBarPoint> {
+        val accountId = accountSessionManager.requireActiveAccountId()
+        val since = System.currentTimeMillis() - range.days * 24L * 60L * 60L * 1000L
+        return listOf(
+            QuestBarPoint("Weight-In", questRecordDao.countCompletedSince(accountId, DailyQuestId.WEIGHT_IN, since)),
+            QuestBarPoint("Creatine", creatineLogDao.countSince(accountId, since)),
+            QuestBarPoint("Water", waterLogDao.countSince(accountId, since))
+        )
     }
 
     suspend fun saveRoutine(settings: RoutineSettings): RoutineSettings {

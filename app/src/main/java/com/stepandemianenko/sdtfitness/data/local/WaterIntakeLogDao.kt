@@ -33,6 +33,14 @@ interface WaterIntakeLogDao {
         syncState: String
     ): Int
 
+    @Query(
+        """
+        SELECT COUNT(*) FROM water_intake_logs
+        WHERE accountId = :accountId AND deletedAt IS NULL AND timestamp >= :sinceMillis
+        """
+    )
+    suspend fun countSince(accountId: String, sinceMillis: Long): Int
+
     @Query("DELETE FROM water_intake_logs WHERE accountId = :accountId")
     suspend fun deleteAllForAccount(accountId: String)
 }

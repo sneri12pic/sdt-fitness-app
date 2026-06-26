@@ -46,6 +46,11 @@ class ProfileViewModel(
                 }
             }
         }
+        viewModelScope.launch {
+            repository.overview.collect { overview ->
+                _uiState.update { it.copy(overview = overview) }
+            }
+        }
     }
 
     fun onEvent(event: ProfileUiEvent) {
@@ -95,6 +100,25 @@ class ProfileViewModel(
             ProfileUiEvent.SaveRoutine -> saveRoutine()
 
             ProfileUiEvent.ClearSaveMessage -> _uiState.update { it.copy(saveMessage = null) }
+
+            ProfileUiEvent.OpenQuestChart -> {
+                _uiState.update { it.copy(isQuestChartOpen = true) }
+                loadQuestChart(_uiState.value.questChartRange)
+            }
+
+            ProfileUiEvent.DismissQuestChart -> _uiState.update { it.copy(isQuestChartOpen = false) }
+
+            is ProfileUiEvent.SelectQuestChartRange -> {
+                _uiState.update { it.copy(questChartRange = event.range) }
+                loadQuestChart(event.range)
+            }
+        }
+    }
+
+    private fun loadQuestChart(range: QuestChartRange) {
+        viewModelScope.launch {
+            val points = repository.questCounts(range)
+            _uiState.update { it.copy(questChart = points) }
         }
     }
 

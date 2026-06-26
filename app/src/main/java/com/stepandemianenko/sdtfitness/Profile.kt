@@ -10,6 +10,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,9 +24,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,6 +52,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,7 +75,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -89,8 +98,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
 import com.stepandemianenko.sdtfitness.auth.ui.AuthGateActivity
 import com.stepandemianenko.sdtfitness.data.AppGraph
+import com.stepandemianenko.sdtfitness.profile.ProfileOverview
 import com.stepandemianenko.sdtfitness.profile.ProfileUiEvent
 import com.stepandemianenko.sdtfitness.profile.ProfileViewModel
+import com.stepandemianenko.sdtfitness.profile.QuestBarPoint
+import com.stepandemianenko.sdtfitness.profile.QuestChartRange
 import com.stepandemianenko.sdtfitness.profile.ReminderTimeTarget
 import com.stepandemianenko.sdtfitness.profile.RoutineSettings
 import com.stepandemianenko.sdtfitness.profile.parseReminderTime
@@ -157,7 +169,18 @@ private val ProfileAccent = Color(0xFFF27F3E)
 private val ProfileDanger = Color(0xFFC62828)
 private val ProfileBottomBarBg = Color(0xFFF5E5DA)
 private val ProfileInactiveIcon = Color(0xFFC48778)
+private val ProfileIconCircle = Color(0xBBF88863) // matches Home's CircleIconContainer
+// Per-quest bar colors: Water reuses the water-jar aqua; the other two are picked to stay distinct.
+private val QuestColorWeightIn = Color(0xFFF27F3E) // coral, the app accent
+private val QuestColorCreatine = Color(0xFF69C47A) // green, same as Home's SoftGreen
+private val QuestColorWater = Color(0xFF3FB6DE)     // aqua, from the water jar fill
 private val ProfileContentMaxWidth = 360.dp
+
+private fun questBarColor(label: String): Color = when (label) {
+    "Creatine" -> QuestColorCreatine
+    "Water" -> QuestColorWater
+    else -> QuestColorWeightIn
+}
 private const val ProfileReservedBottomFraction = 0.15f
 private val ProfileHorizontalPadding = 20.dp
 private val ProfileTopPadding = 30.dp
@@ -313,8 +336,18 @@ fun ProfileRoute(
                     ) {
                         when (activeScreen) {
                             ProfileScreen.Overview -> ProfileOverviewContent(
+                                overview = uiState.overview,
+                                remindersEnabled = uiState.routine.reminderEnabled,
                                 onYourRoutineClick = { activeScreen = ProfileScreen.YourRoutine },
-                                onSettingsClick = { isSettingsDialogOpen = true }
+                                onToggleReminders = {
+                                    // ponytail: flips the saved routine's reminder flag in place; saves the
+                                    // whole draft, fine since overview has no other pending edits.
+                                    viewModel.onEvent(ProfileUiEvent.ToggleRemindersEnabled)
+                                    viewModel.onEvent(ProfileUiEvent.SaveRoutine)
+                                },
+                                onSettingsClick = { isSettingsDialogOpen = true },
+                                onSignOutClick = { isSignOutDialogOpen = true },
+                                onQuestsClick = { viewModel.onEvent(ProfileUiEvent.OpenQuestChart) }
                             )
 
                             ProfileScreen.YourRoutine -> RoutineSetupContent(
@@ -397,14 +430,28 @@ fun ProfileRoute(
                     }
                 )
             }
+
+            if (uiState.isQuestChartOpen) {
+                QuestChartDialog(
+                    range = uiState.questChartRange,
+                    points = uiState.questChart,
+                    onRangeSelected = { viewModel.onEvent(ProfileUiEvent.SelectQuestChartRange(it)) },
+                    onDismiss = { viewModel.onEvent(ProfileUiEvent.DismissQuestChart) }
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun ProfileOverviewContent(
+    overview: ProfileOverview,
+    remindersEnabled: Boolean,
     onYourRoutineClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onToggleReminders: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    onQuestsClick: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -433,6 +480,41 @@ private fun ProfileOverviewContent(
         lineHeight = 20.sp
     )
 
+    ProfileHeroCard(
+        name = overview.displayName,
+        isGuest = overview.isGuest,
+        // ponytail: name editing isn't built yet — inert until there's a profile-edit screen.
+        onEditClick = {}
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        StatCard(
+            icon = { ProfileImageIcon(R.drawable.profile_stat_workouts, 30.dp) },
+            value = overview.stats.workouts,
+            label = "Workouts",
+            modifier = Modifier.weight(1f)
+        )
+        StatCard(
+            // ponytail: no flame asset supplied — emoji until one is.
+            icon = { Text(text = "🔥", fontSize = 22.sp, lineHeight = 24.sp) },
+            value = overview.stats.streakDays,
+            label = "Day streak",
+            modifier = Modifier.weight(1f)
+        )
+        StatCard(
+            icon = { ProfileImageIcon(R.drawable.profile_stat_quests, 30.dp) },
+            value = overview.stats.questsDone,
+            label = "Quests done",
+            modifier = Modifier.weight(1f),
+            onClick = onQuestsClick
+        )
+    }
+
     SectionContainer {
         Text(
             text = "Personal setup",
@@ -444,10 +526,374 @@ private fun ProfileOverviewContent(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        ProfileMenuRow(
-            title = "Your routine",
-            subtitle = "Goals, days, and reminders",
-            onClick = onYourRoutineClick
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ProfileMenuRow(
+                leading = { ProfileImageIcon(R.drawable.profile_row_routine, 22.dp) },
+                title = "Your routine",
+                subtitle = "Goals, days, and reminders",
+                onClick = onYourRoutineClick
+            )
+            ProfileMenuRow(
+                leading = { ProfileImageIcon(R.drawable.profile_row_reminder, 22.dp) },
+                title = "Reminders",
+                subtitle = "Gentle nudges on training days",
+                onClick = onToggleReminders,
+                trailing = {
+                    Switch(
+                        checked = remindersEnabled,
+                        onCheckedChange = { onToggleReminders() },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = ProfileAccent,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = ProfileSecondaryText.copy(alpha = 0.35f)
+                        )
+                    )
+                }
+            )
+            ProfileMenuRow(
+                leading = { ProfileImageIcon(R.drawable.profile_row_health_connect, 22.dp) },
+                title = "Health Connect",
+                subtitle = "Sync steps and weight",
+                // ponytail: no dedicated HC settings screen yet — inert for now.
+                onClick = {}
+            )
+            ProfileMenuRow(
+                // ponytail: reuse the existing Weight-In scales art for Units.
+                leading = { ProfileImageIcon(R.drawable.orange_scales, 22.dp) },
+                title = "Units",
+                subtitle = "Kilograms",
+                // ponytail: unit switching not built yet — inert until kg/lb conversion exists.
+                onClick = {}
+            )
+        }
+    }
+
+    TextButton(
+        onClick = onSignOutClick,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "Sign out",
+            color = ProfileAccent,
+            fontSize = 15.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun ProfileHeroCard(
+    name: String,
+    isGuest: Boolean,
+    onEditClick: () -> Unit
+) {
+    SectionContainer {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.profile_avatar),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(ProfileAccent.copy(alpha = 0.18f))
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = name,
+                    color = ProfilePrimaryText,
+                    fontSize = 22.sp,
+                    lineHeight = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(ProfileAccent.copy(alpha = 0.18f))
+                        .padding(horizontal = 10.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = if (isGuest) "Guest" else "Member",
+                        color = ProfileAccent,
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.clickable(onClick = onEditClick),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Edit",
+                    color = ProfileSecondaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Image(
+                    painter = painterResource(id = R.drawable.home_icon_chevron),
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileImageIcon(res: Int, size: Dp) {
+    Image(
+        painter = painterResource(id = res),
+        contentDescription = null,
+        modifier = Modifier.size(size),
+        contentScale = ContentScale.Fit
+    )
+}
+
+@Composable
+private fun StatCard(
+    icon: @Composable () -> Unit,
+    value: Int,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(16.dp))
+            .background(ProfileCardBackground)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 14.dp, horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Fixed-height icon row so an image vs an emoji don't make cards differ in height.
+            Box(modifier = Modifier.height(32.dp), contentAlignment = Alignment.Center) {
+                icon()
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = value.toString(),
+                color = ProfilePrimaryText,
+                fontSize = 22.sp,
+                lineHeight = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = label,
+                color = ProfileSecondaryText,
+                fontSize = 12.sp,
+                lineHeight = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Quest-completion chart popup. Same shape as Progress' steps dialog, but the bars are scaled up
+ * (taller box, wider columns) and a range dropdown re-queries Week / Month / 3 Months / Year.
+ */
+@Composable
+private fun QuestChartDialog(
+    range: QuestChartRange,
+    points: List<QuestBarPoint>,
+    onRangeSelected: (QuestChartRange) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ProfileCardBackground,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Quests done",
+                    color = ProfilePrimaryText,
+                    fontWeight = FontWeight.Bold
+                )
+                QuestRangeDropdown(range = range, onRangeSelected = onRangeSelected)
+            }
+        },
+        text = { QuestBarChart(points = points) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Close",
+                    color = ProfilePrimaryText,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun QuestRangeDropdown(
+    range: QuestChartRange,
+    onRangeSelected: (QuestChartRange) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(ProfileAccent.copy(alpha = 0.16f))
+                .clickable { expanded = true }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = range.label,
+                color = ProfileAccent,
+                fontSize = 13.sp,
+                lineHeight = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(text = "▾", color = ProfileAccent, fontSize = 12.sp, lineHeight = 12.sp)
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(ProfileCardBackground)
+        ) {
+            QuestChartRange.values().forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label, color = ProfilePrimaryText) },
+                    onClick = {
+                        onRangeSelected(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuestBarChart(points: List<QuestBarPoint>) {
+    val safe = points.ifEmpty {
+        listOf(
+            QuestBarPoint("Weight-In", 0),
+            QuestBarPoint("Creatine", 0),
+            QuestBarPoint("Water", 0)
+        )
+    }
+    val maxCount = safe.maxOf { it.count }.coerceAtLeast(1)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(300.dp)
+            .background(ProfileBackground.copy(alpha = 0.35f), shape = RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            safe.forEachIndexed { index, point ->
+                QuestBar(
+                    modifier = Modifier.weight(1f),
+                    point = point,
+                    maxCount = maxCount,
+                    barColor = questBarColor(point.label),
+                    index = index
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuestBar(
+    modifier: Modifier,
+    point: QuestBarPoint,
+    maxCount: Int,
+    barColor: Color,
+    index: Int
+) {
+    val target = (point.count.toFloat() / maxCount.toFloat()).coerceIn(0f, 1f)
+    // Grow each bar in from the floor, staggered left-to-right.
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { started = true }
+    val fraction by animateFloatAsState(
+        targetValue = if (started) target else 0f,
+        animationSpec = tween(durationMillis = 650, delayMillis = index * 90, easing = FastOutSlowInEasing),
+        label = "questBar"
+    )
+    val barBrush = Brush.verticalGradient(
+        colors = listOf(lerp(barColor, Color.White, 0.35f), barColor)
+    )
+
+    Column(
+        modifier = modifier.fillMaxHeight(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(barColor.copy(alpha = 0.16f))
+                .padding(horizontal = 9.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text = point.count.toString(),
+                color = barColor,
+                fontSize = 13.sp,
+                lineHeight = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Box(
+            modifier = Modifier
+                .padding(top = 8.dp, bottom = 10.dp)
+                .fillMaxWidth(0.62f)
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.4f)),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(fraction)
+                    // Round only the top; the track's clip rounds the base, so the bar sits flush.
+                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                    .background(barBrush)
+            )
+        }
+        Text(
+            text = point.label,
+            color = ProfileSecondaryText,
+            fontSize = 12.sp,
+            lineHeight = 13.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -879,7 +1325,9 @@ private fun BackRow(
 private fun ProfileMenuRow(
     title: String,
     subtitle: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -895,6 +1343,19 @@ private fun ProfileMenuRow(
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (leading != null) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    // Same orange ellipse the Home quest icons sit on.
+                    .background(ProfileIconCircle),
+                contentAlignment = Alignment.Center
+            ) {
+                leading()
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -912,14 +1373,18 @@ private fun ProfileMenuRow(
             )
         }
 
-        Image(
-            painter = painterResource(id = R.drawable.home_icon_chevron),
-            contentDescription = "Open",
-            modifier = Modifier
-                .width(16.dp)
-                .height(16.dp),
-            contentScale = ContentScale.Fit
-        )
+        if (trailing != null) {
+            trailing()
+        } else {
+            Image(
+                painter = painterResource(id = R.drawable.home_icon_chevron),
+                contentDescription = "Open",
+                modifier = Modifier
+                    .width(16.dp)
+                    .height(16.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
     }
 }
 

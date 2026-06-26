@@ -12,14 +12,45 @@ data class RoutineSettings(
         get() = (reminderTimes + customReminderTimes).distinct().sorted()
 }
 
+data class ProfileStats(
+    val workouts: Int = 0,
+    val streakDays: Int = 0,
+    val questsDone: Int = 0
+)
+
+/** Account identity + all-time stats shown on the profile overview. */
+data class ProfileOverview(
+    val displayName: String = "Guest",
+    val isGuest: Boolean = true,
+    val stats: ProfileStats = ProfileStats()
+)
+
+/** Time window for the quest-completion chart. */
+enum class QuestChartRange(val label: String, val days: Long) {
+    WEEK("Week", 7),
+    MONTH("Month", 30),
+    THREE_MONTHS("3 Months", 90),
+    YEAR("Year", 365)
+}
+
+/** One column in the quest chart: a quest and how many times it was done in the range. */
+data class QuestBarPoint(
+    val label: String,
+    val count: Int
+)
+
 data class ProfileUiState(
     val routine: RoutineSettings = RoutineSettings(),
     val draftRoutine: RoutineSettings = RoutineSettings(),
+    val overview: ProfileOverview = ProfileOverview(),
     val isTimePickerOpen: Boolean = false,
     val timePickerTarget: ReminderTimeTarget? = null,
     val timePickerInitialHour: Int = 8,
     val timePickerInitialMinute: Int = 0,
-    val saveMessage: String? = null
+    val saveMessage: String? = null,
+    val isQuestChartOpen: Boolean = false,
+    val questChartRange: QuestChartRange = QuestChartRange.WEEK,
+    val questChart: List<QuestBarPoint> = emptyList()
 )
 
 sealed interface ReminderTimeTarget {
@@ -40,6 +71,9 @@ sealed interface ProfileUiEvent {
     data class RemoveCustomReminder(val time: String) : ProfileUiEvent
     data object SaveRoutine : ProfileUiEvent
     data object ClearSaveMessage : ProfileUiEvent
+    data object OpenQuestChart : ProfileUiEvent
+    data object DismissQuestChart : ProfileUiEvent
+    data class SelectQuestChartRange(val range: QuestChartRange) : ProfileUiEvent
 }
 
 object RoutineDefaults {

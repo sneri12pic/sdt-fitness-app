@@ -32,6 +32,23 @@ interface DailyQuestRecordDao {
     )
     suspend fun getForDate(accountId: String, date: String): List<DailyQuestRecordEntity>
 
+    @Query(
+        """
+        SELECT COUNT(*) FROM daily_quest_records
+        WHERE accountId = :accountId AND isCompleted = 1 AND deletedAt IS NULL
+        """
+    )
+    suspend fun countCompleted(accountId: String): Int
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM daily_quest_records
+        WHERE accountId = :accountId AND questId = :questId
+          AND isCompleted = 1 AND deletedAt IS NULL AND completedAt >= :sinceMillis
+        """
+    )
+    suspend fun countCompletedSince(accountId: String, questId: String, sinceMillis: Long): Int
+
     @Query("DELETE FROM daily_quest_records WHERE accountId = :accountId")
     suspend fun deleteAllForAccount(accountId: String)
 }

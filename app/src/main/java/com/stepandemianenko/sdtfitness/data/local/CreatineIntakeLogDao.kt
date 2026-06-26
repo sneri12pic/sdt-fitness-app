@@ -33,6 +33,14 @@ interface CreatineIntakeLogDao {
         syncState: String
     ): Int
 
+    @Query(
+        """
+        SELECT COUNT(*) FROM creatine_intake_logs
+        WHERE accountId = :accountId AND deletedAt IS NULL AND timestamp >= :sinceMillis
+        """
+    )
+    suspend fun countSince(accountId: String, sinceMillis: Long): Int
+
     @Query("DELETE FROM creatine_intake_logs WHERE accountId = :accountId")
     suspend fun deleteAllForAccount(accountId: String)
 }
