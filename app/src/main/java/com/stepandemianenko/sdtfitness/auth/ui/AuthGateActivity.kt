@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.stepandemianenko.sdtfitness.BuildConfig
 import com.stepandemianenko.sdtfitness.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -104,7 +105,8 @@ fun AuthGateRoute(
                         }
                     }
                 },
-                onContinueAsGuestClick = { viewModel.onEvent(AuthUiEvent.ContinueAsGuest) }
+                onContinueAsGuestClick = { viewModel.onEvent(AuthUiEvent.ContinueAsGuest) },
+                accountAuthEnabled = BuildConfig.AUTH_BASE_URL.isNotBlank()
             )
         }
 

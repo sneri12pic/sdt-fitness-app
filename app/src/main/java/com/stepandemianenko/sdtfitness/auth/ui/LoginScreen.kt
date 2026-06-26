@@ -57,7 +57,9 @@ fun LoginScreen(
     onTogglePasswordVisibilityClick: () -> Unit,
     onToggleConfirmPasswordVisibilityClick: () -> Unit,
     onCredentialClick: () -> Unit,
-    onContinueAsGuestClick: () -> Unit
+    onContinueAsGuestClick: () -> Unit,
+    // ponytail: derived from a configured AUTH_BASE_URL — no backend compiled in => guest-only.
+    accountAuthEnabled: Boolean = true
 ) {
     val isRegisterMode = uiState.mode == AuthMode.Register
     val passwordFocusRequester = remember { FocusRequester() }
@@ -89,16 +91,17 @@ fun LoginScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = if (isRegisterMode) {
-                        "Create an account to sync your workouts."
-                    } else {
-                        "Sign in to sync your workouts."
+                    text = when {
+                        !accountAuthEnabled -> "Track your workouts. No account needed."
+                        isRegisterMode -> "Create an account to sync your workouts."
+                        else -> "Sign in to sync your workouts."
                     },
                     color = AuthSecondaryText,
                     fontSize = 16.sp,
                     lineHeight = 20.sp
                 )
 
+                if (accountAuthEnabled) {
                 Spacer(modifier = Modifier.height(4.dp))
 
                 OutlinedTextField(
@@ -249,19 +252,42 @@ fun LoginScreen(
                         Text("Use saved credential", color = AuthPrimaryText)
                     }
                 }
+                } // end if (accountAuthEnabled)
 
-                TextButton(
-                    onClick = onContinueAsGuestClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uiState.isLoading
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Continue as guest", color = AuthSecondaryText)
+                if (accountAuthEnabled) {
+                    TextButton(
+                        onClick = onContinueAsGuestClick,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isLoading
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Continue as guest", color = AuthSecondaryText)
+                            Text(
+                                text = "Use the app locally without sync.",
+                                color = AuthSecondaryText.copy(alpha = 0.78f),
+                                fontSize = 12.sp,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = onContinueAsGuestClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AuthAction,
+                            contentColor = AuthActionText
+                        ),
+                        enabled = !uiState.isLoading
+                    ) {
                         Text(
-                            text = "Use the app locally without sync.",
-                            color = AuthSecondaryText.copy(alpha = 0.78f),
-                            fontSize = 12.sp,
-                            lineHeight = 14.sp
+                            text = "Get started",
+                            fontSize = 18.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -335,6 +361,28 @@ private fun LoginScreenPreview() {
             onToggleConfirmPasswordVisibilityClick = {},
             onCredentialClick = {},
             onContinueAsGuestClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun GuestOnlyScreenPreview() {
+    MaterialTheme {
+        LoginScreen(
+            uiState = AuthUiState(),
+            onEmailChanged = {},
+            onPasswordChanged = {},
+            onConfirmPasswordChanged = {},
+            onSubmitLoginClick = {},
+            onSubmitRegistrationClick = {},
+            onSwitchToSignInClick = {},
+            onSwitchToRegisterClick = {},
+            onTogglePasswordVisibilityClick = {},
+            onToggleConfirmPasswordVisibilityClick = {},
+            onCredentialClick = {},
+            onContinueAsGuestClick = {},
+            accountAuthEnabled = false
         )
     }
 }
