@@ -48,7 +48,23 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.HelpOutline
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.MonitorHeart
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Straighten
+import androidx.compose.material.icons.rounded.WorkspacePremium
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -75,9 +91,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -97,8 +115,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
 import com.stepandemianenko.sdtfitness.auth.ui.AuthGateActivity
+import com.stepandemianenko.sdtfitness.BuildConfig
 import com.stepandemianenko.sdtfitness.data.AppGraph
 import com.stepandemianenko.sdtfitness.profile.ProfileOverview
+import com.stepandemianenko.sdtfitness.profile.ProfileStats
 import com.stepandemianenko.sdtfitness.profile.ProfileUiEvent
 import com.stepandemianenko.sdtfitness.profile.ProfileViewModel
 import com.stepandemianenko.sdtfitness.profile.QuestBarPoint
@@ -106,6 +126,8 @@ import com.stepandemianenko.sdtfitness.profile.QuestChartRange
 import com.stepandemianenko.sdtfitness.profile.ReminderTimeTarget
 import com.stepandemianenko.sdtfitness.profile.RoutineSettings
 import com.stepandemianenko.sdtfitness.profile.parseReminderTime
+import com.stepandemianenko.sdtfitness.ui.components.GlassBottomNav
+import com.stepandemianenko.sdtfitness.ui.components.NavTab
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.Image
 
@@ -169,7 +191,15 @@ private val ProfileAccent = Color(0xFFF27F3E)
 private val ProfileDanger = Color(0xFFC62828)
 private val ProfileBottomBarBg = Color(0xFFF5E5DA)
 private val ProfileInactiveIcon = Color(0xFFC48778)
-private val ProfileIconCircle = Color(0xBBF88863) // matches Home's CircleIconContainer
+// Warm, on-brand tints for the squircle/circle icon tiles (Apple-style grouped rows).
+private val TileCoral = Color(0xFFF27F3E)
+private val TileGold = Color(0xFFF2A93E)
+private val TileGreen = Color(0xFF69C47A)
+private val TileAqua = Color(0xFF3FB6DE)
+private val TileIndigo = Color(0xFF8A6BC4)
+// Hairline + soft-shadow tints derived from the brown text, so depth reads warm not grey.
+private val CardHairline = Color(0x1A6B4637)
+private val CardShadow = Color(0x33512E1C)
 // Per-quest bar colors: Water reuses the water-jar aqua; the other two are picked to stay distinct.
 private val QuestColorWeightIn = Color(0xFFF27F3E) // coral, the app accent
 private val QuestColorCreatine = Color(0xFF69C47A) // green, same as Home's SoftGreen
@@ -389,12 +419,12 @@ fun ProfileRoute(
                     }
                 }
 
-                ProfileBottomNavigationBar(
+                GlassBottomNav(
+                    active = NavTab.PROFILE,
                     modifier = Modifier.align(Alignment.BottomCenter),
                     onHomeClick = onHomeClick,
                     onWorkoutClick = onWorkoutClick,
-                    onProgressClick = onProgressClick,
-                    onProfileClick = {}
+                    onProgressClick = onProgressClick
                 )
 
                 SnackbarHost(
@@ -460,255 +490,471 @@ private fun ProfileOverviewContent(
     onQuestsClick: () -> Unit,
     onHealthConnectClick: () -> Unit
 ) {
+    // Large iOS-style title with a soft settings button.
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "Profile",
-            color = ProfilePrimaryText,
-            fontSize = 40.sp,
-            lineHeight = 40.sp,
-            fontWeight = FontWeight.Bold
-        )
-        IconButton(onClick = onSettingsClick) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Profile",
+                color = ProfilePrimaryText,
+                fontSize = 34.sp,
+                lineHeight = 36.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Manage your account & preferences",
+                color = ProfileSecondaryText,
+                fontSize = 14.sp,
+                lineHeight = 18.sp
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .shadow(2.dp, CircleShape, clip = false, ambientColor = CardShadow, spotColor = CardShadow)
+                .clip(CircleShape)
+                .background(ProfileCardBackground)
+                .clickable(onClick = onSettingsClick),
+            contentAlignment = Alignment.Center
+        ) {
             Icon(
-                imageVector = Icons.Filled.MoreVert,
+                imageVector = Icons.Rounded.Settings,
                 contentDescription = "Profile settings",
-                tint = ProfilePrimaryText
+                tint = ProfilePrimaryText,
+                modifier = Modifier.size(22.dp)
             )
         }
     }
-    Text(
-        text = "Settings and preferences",
-        color = ProfileSecondaryText,
-        fontSize = 16.sp,
-        lineHeight = 20.sp
-    )
 
     ProfileHeroCard(
         name = overview.displayName,
-        isGuest = overview.isGuest,
-        // ponytail: name editing isn't built yet — inert until there's a profile-edit screen.
-        onEditClick = {}
+        isGuest = overview.isGuest
     )
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        StatCard(
-            icon = { ProfileImageIcon(R.drawable.profile_stat_workouts, 30.dp) },
-            value = overview.stats.workouts,
-            label = "Workouts",
-            modifier = Modifier.weight(1f)
-        )
-        StatCard(
-            // ponytail: no flame asset supplied — emoji until one is.
-            icon = { Text(text = "🔥", fontSize = 22.sp, lineHeight = 24.sp) },
-            value = overview.stats.streakDays,
-            label = "Day streak",
-            modifier = Modifier.weight(1f)
-        )
-        StatCard(
-            icon = { ProfileImageIcon(R.drawable.profile_stat_quests, 30.dp) },
-            value = overview.stats.questsDone,
-            label = "Quests done",
-            modifier = Modifier.weight(1f),
-            onClick = onQuestsClick
-        )
-    }
+    AchievementStrip(
+        stats = overview.stats,
+        onQuestsClick = onQuestsClick
+    )
 
-    SectionContainer {
-        Text(
-            text = "Personal setup",
-            color = ProfilePrimaryText,
-            fontSize = 22.sp,
-            lineHeight = 24.sp,
-            fontWeight = FontWeight.Bold
+    SettingsSection(title = "Personal") {
+        SettingsRow(
+            icon = Icons.Rounded.CalendarMonth,
+            tint = TileCoral,
+            title = "Your routine",
+            subtitle = "Goals, days & reminders",
+            onClick = onYourRoutineClick
         )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ProfileMenuRow(
-                leading = { ProfileImageIcon(R.drawable.profile_row_routine, 22.dp) },
-                title = "Your routine",
-                subtitle = "Goals, days, and reminders",
-                onClick = onYourRoutineClick
-            )
-            ProfileMenuRow(
-                leading = { ProfileImageIcon(R.drawable.profile_row_reminder, 22.dp) },
-                title = "Reminders",
-                subtitle = "Gentle nudges on training days",
-                onClick = onToggleReminders,
-                trailing = {
-                    Switch(
-                        checked = remindersEnabled,
-                        onCheckedChange = { onToggleReminders() },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = ProfileAccent,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = ProfileSecondaryText.copy(alpha = 0.35f)
-                        )
+        RowDivider()
+        SettingsRow(
+            icon = Icons.Rounded.Notifications,
+            tint = TileGold,
+            title = "Reminders",
+            subtitle = "Nudges on training days",
+            showChevron = false,
+            onClick = onToggleReminders,
+            trailing = {
+                Switch(
+                    checked = remindersEnabled,
+                    onCheckedChange = { onToggleReminders() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = ProfileAccent,
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = ProfileSecondaryText.copy(alpha = 0.35f)
                     )
-                }
-            )
-            ProfileMenuRow(
-                leading = { ProfileImageIcon(R.drawable.profile_row_health_connect, 22.dp) },
-                title = "Health Connect",
-                subtitle = "Sync steps and weight",
-                onClick = onHealthConnectClick
-            )
-            ProfileMenuRow(
-                // ponytail: reuse the existing Weight-In scales art for Units.
-                leading = { ProfileImageIcon(R.drawable.orange_scales, 22.dp) },
-                title = "Units",
-                subtitle = "Kilograms",
-                // ponytail: unit switching not built yet — inert until kg/lb conversion exists.
-                onClick = {}
-            )
-        }
-    }
-
-    TextButton(
-        onClick = onSignOutClick,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "Sign out",
-            color = ProfileAccent,
-            fontSize = 15.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.SemiBold
+                )
+            }
+        )
+        RowDivider()
+        SettingsRow(
+            icon = Icons.Rounded.MonitorHeart,
+            tint = TileGreen,
+            title = "Health Connect",
+            subtitle = "Sync steps & weight",
+            onClick = onHealthConnectClick
         )
     }
+
+    SettingsSection(title = "Preferences") {
+        SettingsRow(
+            icon = Icons.Rounded.Straighten,
+            tint = TileAqua,
+            title = "Units",
+            valueText = "Kilograms",
+            // ponytail: kg is the only unit today; wire onClick when lb conversion exists.
+            onClick = {}
+        )
+        RowDivider()
+        SettingsRow(
+            icon = Icons.Rounded.DarkMode,
+            tint = TileIndigo,
+            title = "Appearance",
+            valueText = "System",
+            // ponytail: single warm theme for now; wire onClick when theming lands.
+            onClick = {}
+        )
+    }
+
+    SettingsSection(title = "Account") {
+        SettingsRow(
+            icon = Icons.Rounded.Person,
+            tint = TileCoral,
+            title = "Edit profile",
+            subtitle = "Name & avatar",
+            // ponytail: no profile-edit screen yet; inert until it exists.
+            onClick = {}
+        )
+        RowDivider()
+        SettingsRow(
+            icon = Icons.Rounded.Logout,
+            tint = ProfileDanger,
+            title = "Sign out",
+            destructive = true,
+            showChevron = false,
+            onClick = onSignOutClick
+        )
+    }
+
+    // ponytail: Support rows are structural placeholders — wire each onClick to its
+    // real destination (browser/mailer) when those exist.
+    SettingsSection(title = "Support") {
+        SettingsRow(
+            icon = Icons.Rounded.HelpOutline,
+            tint = TileCoral,
+            title = "Help & FAQ",
+            onClick = {}
+        )
+        RowDivider()
+        SettingsRow(
+            icon = Icons.Rounded.ChatBubbleOutline,
+            tint = TileGreen,
+            title = "Send feedback",
+            onClick = {}
+        )
+        RowDivider()
+        SettingsRow(
+            icon = Icons.Rounded.Shield,
+            tint = TileIndigo,
+            title = "Privacy policy",
+            onClick = {}
+        )
+    }
+
+    AppVersionFooter()
 }
 
+/**
+ * Identity banner: a gradient-ringed avatar, the account name, and a status pill.
+ * Purely informational — editing lives in the Account section below.
+ */
 @Composable
 private fun ProfileHeroCard(
     name: String,
-    isGuest: Boolean,
-    onEditClick: () -> Unit
+    isGuest: Boolean
 ) {
-    SectionContainer {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(4.dp, RoundedCornerShape(22.dp), clip = false, ambientColor = CardShadow, spotColor = CardShadow)
+            .clip(RoundedCornerShape(22.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(ProfileCardBackground, lerp(ProfileCardBackground, ProfileAccent, 0.14f))
+                )
+            )
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(62.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(ProfileAccent, TileGold))),
+            contentAlignment = Alignment.Center
         ) {
             Image(
                 painter = painterResource(id = R.drawable.profile_avatar),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(54.dp)
                     .clip(CircleShape)
-                    .background(ProfileAccent.copy(alpha = 0.18f))
+                    .background(ProfileCardBackground)
             )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    color = ProfilePrimaryText,
-                    fontSize = 22.sp,
-                    lineHeight = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(ProfileAccent.copy(alpha = 0.18f))
-                        .padding(horizontal = 10.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = if (isGuest) "Guest" else "Member",
-                        color = ProfileAccent,
-                        fontSize = 12.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = name,
+                color = ProfilePrimaryText,
+                fontSize = 22.sp,
+                lineHeight = 26.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Row(
-                modifier = Modifier.clickable(onClick = onEditClick),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(ProfileAccent.copy(alpha = 0.16f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Edit",
-                    color = ProfileSecondaryText,
-                    fontSize = 14.sp,
-                    lineHeight = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Image(
-                    painter = painterResource(id = R.drawable.home_icon_chevron),
+                Icon(
+                    imageVector = if (isGuest) Icons.Rounded.Person else Icons.Rounded.WorkspacePremium,
                     contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    contentScale = ContentScale.Fit
+                    tint = ProfileAccent,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = if (isGuest) "Guest account" else "Member · Free",
+                    color = ProfileAccent,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
     }
 }
 
+/** Three tappable stat tiles (workouts / streak / quests) with soft-tinted vector icons. */
 @Composable
-private fun ProfileImageIcon(res: Int, size: Dp) {
-    Image(
-        painter = painterResource(id = res),
-        contentDescription = null,
-        modifier = Modifier.size(size),
-        contentScale = ContentScale.Fit
-    )
+private fun AchievementStrip(
+    stats: ProfileStats,
+    onQuestsClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        AchievementTile(
+            icon = Icons.Rounded.FitnessCenter,
+            tint = TileCoral,
+            value = stats.workouts,
+            label = "Workouts",
+            modifier = Modifier.weight(1f)
+        )
+        AchievementTile(
+            icon = Icons.Rounded.LocalFireDepartment,
+            tint = TileGold,
+            value = stats.streakDays,
+            label = "Day streak",
+            modifier = Modifier.weight(1f)
+        )
+        AchievementTile(
+            icon = Icons.Rounded.EmojiEvents,
+            tint = TileGreen,
+            value = stats.questsDone,
+            label = "Quests",
+            modifier = Modifier.weight(1f),
+            onClick = onQuestsClick
+        )
+    }
 }
 
 @Composable
-private fun StatCard(
-    icon: @Composable () -> Unit,
+private fun AchievementTile(
+    icon: ImageVector,
+    tint: Color,
     value: Int,
     label: String,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
-    Box(
+    Column(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(16.dp))
+            .shadow(3.dp, RoundedCornerShape(18.dp), clip = false, ambientColor = CardShadow, spotColor = CardShadow)
+            .clip(RoundedCornerShape(18.dp))
             .background(ProfileCardBackground)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(vertical = 14.dp, horizontal = 8.dp),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // Fixed-height icon row so an image vs an emoji don't make cards differ in height.
-            Box(modifier = Modifier.height(32.dp), contentAlignment = Alignment.Center) {
-                icon()
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = value.toString(),
-                color = ProfilePrimaryText,
-                fontSize = 22.sp,
-                lineHeight = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = label,
-                color = ProfileSecondaryText,
-                fontSize = 12.sp,
-                lineHeight = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(tint.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(20.dp)
             )
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = value.toString(),
+            color = ProfilePrimaryText,
+            fontSize = 22.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            color = ProfileSecondaryText,
+            fontSize = 12.sp,
+            lineHeight = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** A titled block: small uppercase header tight above one grouped inset card. */
+@Composable
+private fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = title.uppercase(),
+            color = ProfileSecondaryText.copy(alpha = 0.75f),
+            fontSize = 12.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 6.dp, top = 4.dp)
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(3.dp, RoundedCornerShape(18.dp), clip = false, ambientColor = CardShadow, spotColor = CardShadow)
+                .clip(RoundedCornerShape(18.dp))
+                .background(ProfileCardBackground),
+            content = content
+        )
+    }
+}
+
+/** Hairline between rows, inset past the icon so it aligns iOS-style with the text. */
+@Composable
+private fun RowDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 58.dp)
+            .height(1.dp)
+            .background(CardHairline)
+    )
+}
+
+@Composable
+private fun SettingsRow(
+    icon: ImageVector,
+    tint: Color,
+    title: String,
+    onClick: () -> Unit,
+    subtitle: String? = null,
+    valueText: String? = null,
+    destructive: Boolean = false,
+    showChevron: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconTile(icon = icon, tint = if (destructive) ProfileDanger else tint)
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = if (destructive) ProfileDanger else ProfilePrimaryText,
+                fontSize = 16.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    color = ProfileSecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp
+                )
+            }
+        }
+        if (trailing != null) {
+            trailing()
+        } else {
+            if (valueText != null) {
+                Text(
+                    text = valueText,
+                    color = ProfileSecondaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp
+                )
+            }
+            if (showChevron) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(
+                    imageVector = Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = ProfileSecondaryText.copy(alpha = 0.55f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+/** iOS-style rounded-square icon chip: solid tint with a white glyph. */
+@Composable
+private fun IconTile(icon: ImageVector, tint: Color) {
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(tint),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
+private fun AppVersionFooter() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "SDT Fitness",
+            color = ProfileSecondaryText.copy(alpha = 0.85f),
+            fontSize = 13.sp,
+            lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "Version " + BuildConfig.VERSION_NAME,
+            color = ProfileSecondaryText.copy(alpha = 0.6f),
+            fontSize = 12.sp,
+            lineHeight = 14.sp
+        )
     }
 }
 
@@ -1328,73 +1574,6 @@ private fun BackRow(
 }
 
 @Composable
-private fun ProfileMenuRow(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    leading: (@Composable () -> Unit)? = null,
-    trailing: (@Composable () -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(ProfileCardBackground.copy(alpha = 0.85f))
-            .border(
-                width = 1.dp,
-                color = ProfileSecondaryText.copy(alpha = 0.18f),
-                shape = RoundedCornerShape(12.dp)
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (leading != null) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    // Same orange ellipse the Home quest icons sit on.
-                    .background(ProfileIconCircle),
-                contentAlignment = Alignment.Center
-            ) {
-                leading()
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = ProfilePrimaryText,
-                fontSize = 18.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                color = ProfileSecondaryText,
-                fontSize = 13.sp,
-                lineHeight = 16.sp
-            )
-        }
-
-        if (trailing != null) {
-            trailing()
-        } else {
-            Image(
-                painter = painterResource(id = R.drawable.home_icon_chevron),
-                contentDescription = "Open",
-                modifier = Modifier
-                    .width(16.dp)
-                    .height(16.dp),
-                contentScale = ContentScale.Fit
-            )
-        }
-    }
-}
-
-@Composable
 private fun GoalSelectionCard(
     title: String,
     description: String,
@@ -1790,87 +1969,6 @@ private fun SectionContainer(
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             content = content
-        )
-    }
-}
-
-@Composable
-private fun ProfileBottomNavigationBar(
-    modifier: Modifier = Modifier,
-    onHomeClick: () -> Unit,
-    onWorkoutClick: () -> Unit,
-    onProgressClick: () -> Unit,
-    onProfileClick: () -> Unit
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .background(BottomBarBg)
-                .fillMaxWidth()
-                .border(width = 1.dp, color = Color(0x80D6AA98))
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ProfileBottomNavItem(
-                label = "Home",
-                icon = R.drawable.home_nav_home,
-                textColor = ProfileInactiveIcon,
-                onClick = onHomeClick
-            )
-            ProfileBottomNavItem(
-                label = "Workout",
-                icon = R.drawable.home_nav_workout,
-                textColor = ProfileInactiveIcon,
-                onClick = onWorkoutClick
-            )
-            ProfileBottomNavItem(
-                label = "Progress",
-                icon = R.drawable.home_nav_progress,
-                textColor = ProfileInactiveIcon,
-                onClick = onProgressClick
-            )
-            ProfileBottomNavItem(
-                label = "Profile",
-                icon = R.drawable.profile_active,
-                textColor = ProfileAccent,
-                onClick = onProfileClick
-            )
-        }
-        Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-    }
-}
-
-@Composable
-private fun ProfileBottomNavItem(
-    label: String,
-    icon: Int,
-    textColor: Color,
-    iconWidth: Dp = 24.dp,
-    iconHeight: Dp = 24.dp,
-    iconContentScale: ContentScale = ContentScale.Fit,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .noRippleClickable(onClick)
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Image(
-            painter = painterResource(id = icon),
-            contentDescription = label,
-            modifier = Modifier
-                .width(iconWidth)
-                .height(iconHeight),
-            contentScale = iconContentScale
-        )
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = 13.sp,
-            lineHeight = 10.sp
         )
     }
 }
