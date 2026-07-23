@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 class WorkoutDatabaseMigrationTest {
 
     @Test
-    fun migrateFrom1To8_backfillsAccountAndScopesData() {
+    fun migrateFrom1To13_backfillsAccountAndScopesData() {
         runBlocking {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val dbName = "workout-migration-test"
@@ -141,7 +141,10 @@ class WorkoutDatabaseMigrationTest {
                 WorkoutDatabase.MIGRATION_6_7,
                 WorkoutDatabase.MIGRATION_7_8,
                 WorkoutDatabase.MIGRATION_8_9,
-                WorkoutDatabase.MIGRATION_9_10
+                WorkoutDatabase.MIGRATION_9_10,
+                WorkoutDatabase.MIGRATION_10_11,
+                WorkoutDatabase.MIGRATION_11_12,
+                WorkoutDatabase.MIGRATION_12_13
             )
             .build()
 
@@ -180,6 +183,8 @@ class WorkoutDatabaseMigrationTest {
         assertEquals(true, migratedSettings?.routineReminderEnabled)
         assertEquals("", migratedSettings?.routineReminderTimesCsv)
         assertEquals("", migratedSettings?.routineCustomReminderTimesCsv)
+        assertEquals("", migratedSettings?.restDayDatesCsv)
+        assertEquals("", migratedSettings?.quickLogDatesCsv)
         assertEquals(120, db.exerciseCatalogDao().count())
 
         val now = System.currentTimeMillis()

@@ -21,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionExerciseEntity::class,
         SessionSetLogEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class WorkoutDatabase : RoomDatabase() {
@@ -501,6 +501,28 @@ abstract class WorkoutDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `restDayDatesCsv` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `user_settings` ADD COLUMN `quickLogDatesCsv` TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    """
+                    UPDATE `user_settings`
+                    SET `restDayDatesCsv` = COALESCE(`recoveryLogDate`, '')
+                    WHERE `recoveryLogOption` = 'REST_DAY'
+                      AND `recoveryLogDate` IS NOT NULL
+                    """
+                )
+                db.execSQL(
+                    """
+                    UPDATE `user_settings`
+                    SET `quickLogDatesCsv` = COALESCE(`quickLogDate`, '')
+                    WHERE `quickLogDate` IS NOT NULL
+                    """
+                )
+            }
+        }
+
         fun getInstance(context: Context): WorkoutDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -519,7 +541,8 @@ abstract class WorkoutDatabase : RoomDatabase() {
                         MIGRATION_8_9,
                         MIGRATION_9_10,
                         MIGRATION_10_11,
-                        MIGRATION_11_12
+                        MIGRATION_11_12,
+                        MIGRATION_12_13
                     )
                     .build()
                     .also { INSTANCE = it }

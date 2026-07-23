@@ -1,6 +1,8 @@
 package com.stepandemianenko.sdtfitness.home
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 
@@ -116,5 +118,55 @@ class HomeModelsTest {
         )
 
         assertEquals(0, calculateCurrentStreak(streakDates, today))
+    }
+
+    @Test
+    fun buildRoutineCalendarActivityMap_keepsWorkoutQuickLogAndRestDayDistinct() {
+        val workoutDate = LocalDate.of(2026, 7, 20)
+        val quickLogDate = LocalDate.of(2026, 7, 21)
+        val restDayDate = LocalDate.of(2026, 7, 22)
+
+        val activities = buildRoutineCalendarActivityMap(
+            routineDates = setOf(workoutDate, quickLogDate, restDayDate),
+            workoutDates = setOf(workoutDate),
+            quickLogDates = setOf(quickLogDate),
+            restDayDates = setOf(restDayDate)
+        )
+
+        assertEquals(setOf(RoutineCalendarActivity.WORKOUT), activities[workoutDate])
+        assertEquals(setOf(RoutineCalendarActivity.QUICK_LOG), activities[quickLogDate])
+        assertEquals(setOf(RoutineCalendarActivity.REST_DAY), activities[restDayDate])
+    }
+
+    @Test
+    fun buildRoutineCalendarActivityMap_preservesMultipleActivitiesOnSameDay() {
+        val date = LocalDate.of(2026, 7, 23)
+
+        val activities = buildRoutineCalendarActivityMap(
+            routineDates = setOf(date),
+            workoutDates = setOf(date),
+            quickLogDates = setOf(date),
+            restDayDates = emptySet()
+        )
+
+        assertEquals(
+            setOf(RoutineCalendarActivity.WORKOUT, RoutineCalendarActivity.QUICK_LOG),
+            activities[date]
+        )
+        assertFalse(activities[date].orEmpty().contains(RoutineCalendarActivity.ACTIVITY))
+    }
+
+    @Test
+    fun buildRoutineCalendarActivityMap_marksUnclassifiedLegacyRoutineDates() {
+        val legacyDate = LocalDate.of(2026, 7, 19)
+
+        val activities = buildRoutineCalendarActivityMap(
+            routineDates = setOf(legacyDate),
+            workoutDates = emptySet(),
+            quickLogDates = emptySet(),
+            restDayDates = emptySet()
+        )
+
+        assertTrue(activities[legacyDate].orEmpty().contains(RoutineCalendarActivity.ACTIVITY))
     }
 }

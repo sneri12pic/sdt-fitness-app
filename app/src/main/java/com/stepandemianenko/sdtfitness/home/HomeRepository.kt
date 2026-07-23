@@ -354,11 +354,15 @@ class HomeRepository(
             val routineDates = decodeDateSet(current.routineCompletedDatesCsv).toMutableSet().apply {
                 add(todayKey)
             }
+            val restDayDates = decodeDateSet(current.restDayDatesCsv).toMutableSet().apply {
+                if (option == RecoveryOption.REST_DAY) add(todayKey) else remove(todayKey)
+            }
             current.copy(
                 recoveryLogDate = todayKey,
                 recoveryLogOption = option.name,
                 recoveryLogAtMillis = now,
-                routineCompletedDatesCsv = encodeDateSet(routineDates)
+                routineCompletedDatesCsv = encodeDateSet(routineDates),
+                restDayDatesCsv = encodeDateSet(restDayDates)
             )
         }
     }
@@ -377,6 +381,9 @@ class HomeRepository(
             val routineDates = decodeDateSet(current.routineCompletedDatesCsv).toMutableSet().apply {
                 add(todayKey)
             }
+            val quickLogDates = decodeDateSet(current.quickLogDatesCsv).toMutableSet().apply {
+                add(todayKey)
+            }
 
             current.copy(
                 quickLogDate = todayKey,
@@ -385,7 +392,8 @@ class HomeRepository(
                 quickLogTimestamp = timestampMillis,
                 quickLogSource = source,
                 activeMinutesToday = updatedActiveMinutes,
-                routineCompletedDatesCsv = encodeDateSet(routineDates)
+                routineCompletedDatesCsv = encodeDateSet(routineDates),
+                quickLogDatesCsv = encodeDateSet(quickLogDates)
             )
         }
     }
@@ -481,6 +489,12 @@ class HomeRepository(
             .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
             .toSet()
         val routineDates = decodeDateSet(routineCompletedDatesCsv)
+            .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
+            .toSet()
+        val restDayDates = decodeDateSet(restDayDatesCsv)
+            .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
+            .toSet()
+        val quickLogDates = decodeDateSet(quickLogDatesCsv)
             .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
             .toSet()
 
@@ -589,6 +603,12 @@ class HomeRepository(
                 questsTarget = questsTarget
             ),
             routineStreakDates = routineDates,
+            routineCalendarActivities = buildRoutineCalendarActivityMap(
+                routineDates = routineDates,
+                workoutDates = workoutCompletedDates,
+                quickLogDates = quickLogDates,
+                restDayDates = restDayDates
+            ),
             restDay = RestDayUiState(
                 selectedOption = savedRecoveryOption ?: RecoveryOption.REST_DAY,
                 savedTodayOption = savedRecoveryOption,

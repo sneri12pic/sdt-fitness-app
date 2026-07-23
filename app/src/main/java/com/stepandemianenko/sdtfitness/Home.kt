@@ -41,14 +41,21 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Snackbar
@@ -57,6 +64,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -83,6 +91,7 @@ import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -118,11 +127,15 @@ import com.stepandemianenko.sdtfitness.home.DebugAccountUiModel
 import com.stepandemianenko.sdtfitness.home.HomeUiEvent
 import com.stepandemianenko.sdtfitness.home.HomeUiState
 import com.stepandemianenko.sdtfitness.home.HomeViewModel
+import com.stepandemianenko.sdtfitness.home.QuickLogType
 import com.stepandemianenko.sdtfitness.home.RecoveryOption
+import com.stepandemianenko.sdtfitness.home.RoutineCalendarActivity
 import com.stepandemianenko.sdtfitness.home.WeightInQuestState
 import com.stepandemianenko.sdtfitness.progress.ExerciseSetMetricChart
 import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import com.stepandemianenko.sdtfitness.quicklog.QuickLogRoute
+import com.stepandemianenko.sdtfitness.ui.components.GlassBottomNav
+import com.stepandemianenko.sdtfitness.ui.components.NavTab
 import com.stepandemianenko.sdtfitness.ui.theme.ReservedBottomFraction
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -193,6 +206,10 @@ private val ProgressTrack = Color(0xFFE6B8A5)
 private val BottomBarBg = Color(0xFFF5E5DA)
 private val InactiveIcon = Color(0xFFC48778)
 private val StreakHighlight = Color(0x80F88863)
+private val CalendarWorkout = Color(0xFFB84425)
+private val CalendarQuickLog = Color(0xFF276035)
+private val CalendarRestDay = Color(0xFF5C5B8F)
+private val CalendarActivity = Color(0xFF6B4637)
 
 // Translucent aqua so the measurement lines and face read through the water.
 private val WaterFill = Color(0x9952C5E8)
@@ -282,6 +299,7 @@ fun HomeRoute(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeOneScreen(
     uiState: HomeUiState = HomeUiState(),
@@ -351,6 +369,7 @@ fun HomeOneScreen(
             // Keep scroll content clear of the fixed bottom bar + system nav area.
             val reservedBottomHeight = maxHeight * ReservedBottomFraction
             var activeScreen by rememberSaveable { mutableStateOf(HomeScreen.Dashboard) }
+            val homeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
             BackHandler(enabled = activeScreen != HomeScreen.Dashboard) {
                 activeScreen = HomeScreen.Dashboard
@@ -377,63 +396,37 @@ fun HomeOneScreen(
                             ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        when (activeScreen) {
-                            HomeScreen.Dashboard -> DashboardContent(
-                                uiState = uiState,
-                                onStartWorkoutClick = onStartWorkoutClick,
-                                onWorkoutClick = onWorkoutClick,
-                                onOpenQuickLogDetails = { activeScreen = HomeScreen.QuickLogDetails },
-                                onOpenRestDayDetails = { activeScreen = HomeScreen.RestDayDetails },
-                                onOpenDailyQuestEditor = onOpenDailyQuestEditor,
-                                onOpenAddCustomQuestDialog = onOpenAddCustomQuestDialog,
-                                onToggleWeightInQuestCompletion = onToggleWeightInQuestCompletion,
-                                onRemoveWeightInQuest = onRemoveWeightInQuest,
-                                onRemoveCreatineIntakeQuest = onRemoveCreatineIntakeQuest,
-                                onRemoveWaterIntakeQuest = onRemoveWaterIntakeQuest,
-                                onOpenCreatineOverlay = onOpenCreatineOverlay,
-                                onAddCreatinePortion = onAddCreatinePortion,
-                                onOpenWaterOverlay = onOpenWaterOverlay,
-                                onAddWaterPortion = onAddWaterPortion,
-                                onOpenWeightInChartDialog = onOpenWeightInChartDialog,
-                                onPreviousRoutineMonth = onPreviousRoutineMonth,
-                                onNextRoutineMonth = onNextRoutineMonth,
-                                healthConnectLastUpdatedMillis = uiState.dashboard.healthConnectLastSyncedAtMillis,
-                                onSyncHealthConnectClick = onSyncHealthConnectClick,
-                                activeAccountId = uiState.activeAccountId,
-                                accounts = uiState.accounts,
-                                onCreateTestUserClick = onCreateTestUserClick,
-                                onSwitchAccountClick = onSwitchAccountClick,
-                                onWipeCurrentAccountDataClick = onWipeCurrentAccountDataClick
-                            )
-
-                            HomeScreen.RestDayDetails -> RestDayDetailsContent(
-                                onSaveRestDay = {
-                                    onSaveRecoveryOption(RecoveryOption.REST_DAY)
-                                    activeScreen = HomeScreen.Dashboard
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar(message = restDayLoggedMessage)
-                                    }
-                                },
-                                onBackClick = { activeScreen = HomeScreen.Dashboard }
-                            )
-
-                            HomeScreen.QuickLogDetails -> QuickLogRoute(
-                                onBackClick = { activeScreen = HomeScreen.Dashboard },
-                                onQuickLogSaved = { message ->
-                                    activeScreen = HomeScreen.Dashboard
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar(message = message)
-                                    }
-                                },
-                                cardColor = CardBackground,
-                                accentColor = ActionColor,
-                                primaryTextColor = PrimaryText,
-                                secondaryTextColor = SecondaryText
-                            )
-                        }
+                        DashboardContent(
+                            uiState = uiState,
+                            onStartWorkoutClick = onStartWorkoutClick,
+                            onWorkoutClick = onWorkoutClick,
+                            onOpenQuickLogDetails = { activeScreen = HomeScreen.QuickLogDetails },
+                            onOpenRestDayDetails = { activeScreen = HomeScreen.RestDayDetails },
+                            onOpenDailyQuestEditor = onOpenDailyQuestEditor,
+                            onOpenAddCustomQuestDialog = onOpenAddCustomQuestDialog,
+                            onToggleWeightInQuestCompletion = onToggleWeightInQuestCompletion,
+                            onRemoveWeightInQuest = onRemoveWeightInQuest,
+                            onRemoveCreatineIntakeQuest = onRemoveCreatineIntakeQuest,
+                            onRemoveWaterIntakeQuest = onRemoveWaterIntakeQuest,
+                            onOpenCreatineOverlay = onOpenCreatineOverlay,
+                            onAddCreatinePortion = onAddCreatinePortion,
+                            onOpenWaterOverlay = onOpenWaterOverlay,
+                            onAddWaterPortion = onAddWaterPortion,
+                            onOpenWeightInChartDialog = onOpenWeightInChartDialog,
+                            onPreviousRoutineMonth = onPreviousRoutineMonth,
+                            onNextRoutineMonth = onNextRoutineMonth,
+                            healthConnectLastUpdatedMillis = uiState.dashboard.healthConnectLastSyncedAtMillis,
+                            onSyncHealthConnectClick = onSyncHealthConnectClick,
+                            activeAccountId = uiState.activeAccountId,
+                            accounts = uiState.accounts,
+                            onCreateTestUserClick = onCreateTestUserClick,
+                            onSwitchAccountClick = onSwitchAccountClick,
+                            onWipeCurrentAccountDataClick = onWipeCurrentAccountDataClick
+                        )
                     }
                 }
-                BottomNavigationBar(
+                GlassBottomNav(
+                    active = NavTab.HOME,
                     modifier = Modifier.align(Alignment.BottomCenter),
                     onWorkoutClick = onWorkoutClick,
                     onProgressClick = onProgressClick,
@@ -601,6 +594,53 @@ fun HomeOneScreen(
                     }
                 )
             }
+
+            if (activeScreen != HomeScreen.Dashboard) {
+                ModalBottomSheet(
+                    onDismissRequest = { activeScreen = HomeScreen.Dashboard },
+                    sheetState = homeSheetState,
+                    containerColor = CardBackground,
+                    contentColor = PrimaryText,
+                    tonalElevation = 0.dp,
+                    scrimColor = PrimaryText.copy(alpha = 0.32f),
+                    dragHandle = {
+                        BottomSheetDefaults.DragHandle(
+                            color = SecondaryText.copy(alpha = 0.30f)
+                        )
+                    }
+                ) {
+                    when (activeScreen) {
+                        HomeScreen.RestDayDetails -> RestDayDetailsContent(
+                            isAlreadyLogged = uiState.dashboard.restDay.savedTodayOption == RecoveryOption.REST_DAY,
+                            onSaveRestDay = {
+                                onSaveRecoveryOption(RecoveryOption.REST_DAY)
+                                activeScreen = HomeScreen.Dashboard
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(message = restDayLoggedMessage)
+                                }
+                            },
+                            onAddLightActivity = { activeScreen = HomeScreen.QuickLogDetails },
+                            onBackClick = { activeScreen = HomeScreen.Dashboard }
+                        )
+
+                        HomeScreen.QuickLogDetails -> QuickLogRoute(
+                            onBackClick = { activeScreen = HomeScreen.Dashboard },
+                            onQuickLogSaved = { message ->
+                                activeScreen = HomeScreen.Dashboard
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(message = message)
+                                }
+                            },
+                            cardColor = CardBackground,
+                            accentColor = ActionColor,
+                            primaryTextColor = PrimaryText,
+                            secondaryTextColor = SecondaryText
+                        )
+
+                        HomeScreen.Dashboard -> Unit
+                    }
+                }
+            }
         }
     }
 }
@@ -651,7 +691,14 @@ private fun DashboardContent(
     )
     PlanRow(
         title = "Quick Log",
-        subtitle = "Log a small activity or update your day",
+        subtitle = uiState.dashboard.quickLogToday?.let { entry ->
+            val activity = when (entry.quickLogType) {
+                QuickLogType.WALK -> "Walk"
+                QuickLogType.MOBILITY -> "Mobility"
+                QuickLogType.CUSTOM -> "Activity"
+            }
+            "$activity · ${entry.durationMinutes} min logged today"
+        } ?: "Add a light activity to today",
         icon = {
             CircleIconContainer(iconRes = R.drawable.quick_log)
         },
@@ -659,7 +706,11 @@ private fun DashboardContent(
     )
     PlanRow(
         title = "Rest Day",
-        subtitle = "Mark today as a recovery day",
+        subtitle = if (uiState.dashboard.restDay.savedTodayOption == RecoveryOption.REST_DAY) {
+            "Recovery day logged for today"
+        } else {
+            "Mark today as a recovery day"
+        },
         icon = {
             CircleIconContainer(iconRes = R.drawable.recovery)
         },
@@ -699,6 +750,7 @@ private fun DashboardContent(
     RoutineCard(
         visibleMonth = uiState.visibleRoutineMonth,
         streakDates = uiState.dashboard.routineStreakDates,
+        activityByDate = uiState.dashboard.routineCalendarActivities,
         onPreviousMonth = onPreviousRoutineMonth,
         onNextMonth = onNextRoutineMonth,
         onClick = {}
@@ -789,221 +841,237 @@ private fun DebugAccountsCard(
 
 @Composable
 private fun RestDayDetailsContent(
+    isAlreadyLogged: Boolean,
     onSaveRestDay: () -> Unit,
+    onAddLightActivity: () -> Unit,
     onBackClick: () -> Unit
 ) {
-    val optionSpacing = dimensionResource(id = R.dimen.rest_day_option_spacing)
-
-    Row(
-        modifier = Modifier
-            .clickable(onClick = onBackClick)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "‹",
-            color = PrimaryText,
-            fontSize = 22.sp,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.Medium
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = stringResource(id = R.string.rest_day_back_to_home),
-            color = SecondaryText,
-            fontSize = 14.sp,
-            lineHeight = 16.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+    val dateLabel = remember {
+        LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault()))
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(optionSpacing)) {
-        RestDayHeroCard()
-        HomeCard {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = stringResource(id = R.string.rest_day_recovery_title),
-                        color = PrimaryText,
-                        fontSize = 22.sp,
-                        lineHeight = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(id = R.string.rest_day_recovery_subtitle),
-                        color = SecondaryText,
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp
-                    )
-                }
-
-                RestDayPrimaryAction(
-                    label = stringResource(id = R.string.rest_day_save_rest_day),
-                    onClick = onSaveRestDay
-                )
-
-                Text(
-                    text = stringResource(id = R.string.rest_day_helper_text),
-                    color = SecondaryText,
-                    fontSize = 13.sp,
-                    lineHeight = 16.sp,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RestDayHeroCard() {
-    HomeCard(horizontalPadding = 0.dp, verticalPadding = 0.dp) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(dimensionResource(id = R.dimen.rest_day_hero_height))
-                .clip(RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.sleeping_pillow),
-                contentDescription = stringResource(id = R.string.rest_day_hero_content_description),
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecoveryOptionCard(
-    title: String,
-    description: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    supportingChips: List<String> = emptyList()
-) {
-    val optionRadius = dimensionResource(id = R.dimen.rest_day_option_corner_radius)
-    val optionVerticalPadding = dimensionResource(id = R.dimen.rest_day_option_vertical_padding)
-    val optionHorizontalPadding = dimensionResource(id = R.dimen.rest_day_option_horizontal_padding)
-    val borderColor = if (isSelected) ActionColor else SecondaryText.copy(alpha = 0.20f)
-    val containerColor = if (isSelected) ActionColor.copy(alpha = 0.13f) else CardBackground
-
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(optionRadius))
-            .border(
-                width = if (isSelected) 1.5.dp else 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(optionRadius)
-            )
-            .background(containerColor)
-            .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) {
-                selected = isSelected
-                role = Role.RadioButton
-            }
-            .padding(horizontal = optionHorizontalPadding, vertical = optionVerticalPadding)
+            .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = stringResource(id = R.string.rest_day_sheet_title),
+                    color = PrimaryText,
+                    fontSize = 26.sp,
+                    lineHeight = 30.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = stringResource(id = R.string.rest_day_date, dateLabel),
+                    color = SecondaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+            IconButton(
+                onClick = onBackClick,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(id = R.string.rest_day_close),
+                    tint = PrimaryText
+                )
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = ActionColor.copy(alpha = 0.10f),
+            shape = RoundedCornerShape(18.dp),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = ActionColor.copy(alpha = 0.28f)
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .border(
-                            width = 1.5.dp,
-                            color = if (isSelected) ActionColor else SecondaryText.copy(alpha = 0.35f),
-                            shape = CircleShape
-                        )
-                        .background(if (isSelected) ActionColor.copy(alpha = 0.14f) else Color.Transparent),
+                        .size(64.dp)
+                        .background(ActionColor.copy(alpha = 0.20f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isSelected) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(ActionColor)
-                        )
-                    }
+                    Image(
+                        painter = painterResource(id = R.drawable.recovery),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(48.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
-                        text = title,
+                        text = if (isAlreadyLogged) {
+                            stringResource(id = R.string.rest_day_already_logged_title)
+                        } else {
+                            stringResource(id = R.string.rest_day_premium_title)
+                        },
                         color = PrimaryText,
                         fontSize = 17.sp,
-                        lineHeight = 19.sp,
+                        lineHeight = 22.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = description,
+                        text = stringResource(id = R.string.rest_day_premium_body),
                         color = SecondaryText,
                         fontSize = 13.sp,
-                        lineHeight = 16.sp
+                        lineHeight = 18.sp
                     )
                 }
             }
-            if (supportingChips.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    supportingChips.forEach { label ->
-                        RestDaySupportChip(label = label)
-                    }
-                }
-            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            RestDayInfoRow(
+                icon = {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = CalendarQuickLog,
+                        modifier = Modifier.size(22.dp)
+                    )
+                },
+                title = stringResource(id = R.string.rest_day_consistency_title),
+                body = stringResource(id = R.string.rest_day_consistency_body)
+            )
+            RestDayInfoRow(
+                icon = {
+                    Icon(
+                        imageVector = Icons.Rounded.RemoveCircleOutline,
+                        contentDescription = null,
+                        tint = SecondaryText,
+                        modifier = Modifier.size(22.dp)
+                    )
+                },
+                title = stringResource(id = R.string.rest_day_no_workout_title),
+                body = stringResource(id = R.string.rest_day_no_workout_body)
+            )
+            RestDayInfoRow(
+                icon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        tint = CalendarRestDay,
+                        modifier = Modifier.size(22.dp)
+                    )
+                },
+                title = stringResource(id = R.string.rest_day_quests_title),
+                body = stringResource(id = R.string.rest_day_quests_body)
+            )
+        }
+
+        RestDayPrimaryAction(
+            label = if (isAlreadyLogged) {
+                stringResource(id = R.string.rest_day_already_logged_button)
+            } else {
+                stringResource(id = R.string.rest_day_log_button)
+            },
+            enabled = !isAlreadyLogged,
+            onClick = onSaveRestDay
+        )
+
+        TextButton(
+            onClick = onAddLightActivity,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.rest_day_add_light_activity),
+                color = PrimaryText,
+                fontSize = 14.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
 
 @Composable
-private fun RestDaySupportChip(label: String) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(dimensionResource(id = R.dimen.rest_day_chip_corner_radius)))
-            .background(CardBackground.copy(alpha = 0.92f))
-            .border(
-                width = 1.dp,
-                color = SecondaryText.copy(alpha = 0.25f),
-                shape = RoundedCornerShape(dimensionResource(id = R.dimen.rest_day_chip_corner_radius))
-            )
-            .padding(
-                horizontal = dimensionResource(id = R.dimen.rest_day_chip_horizontal_padding),
-                vertical = dimensionResource(id = R.dimen.rest_day_chip_vertical_padding)
-            )
+private fun RestDayInfoRow(
+    icon: @Composable () -> Unit,
+    title: String,
+    body: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
     ) {
-        Text(
-            text = label,
-            color = SecondaryText,
-            fontSize = 12.sp,
-            lineHeight = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .background(ProgressTrack.copy(alpha = 0.42f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            icon()
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = title,
+                color = PrimaryText,
+                fontSize = 14.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = body,
+                color = SecondaryText,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+        }
     }
 }
 
 @Composable
 private fun RestDayPrimaryAction(
     label: String,
+    enabled: Boolean,
     onClick: () -> Unit
 ) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
-            .height(dimensionResource(id = R.dimen.rest_day_primary_button_height)),
-        shape = RoundedCornerShape(50),
+            .height(52.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = ActionColor,
-            contentColor = Color(0xFFFCE8DA)
+            contentColor = PrimaryText,
+            disabledContainerColor = ProgressTrack,
+            disabledContentColor = SecondaryText
         )
     ) {
         Text(
             text = label,
             fontSize = 15.sp,
-            lineHeight = 15.sp,
+            lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -2455,13 +2523,14 @@ private fun AddTile(onClick: () -> Unit) {
 private fun RoutineCard(
     visibleMonth: YearMonth,
     streakDates: Set<LocalDate>,
+    activityByDate: Map<LocalDate, Set<RoutineCalendarActivity>>,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onClick: () -> Unit
 ) {
     val today = remember { LocalDate.now() }
-    val calendarDays = remember(visibleMonth, streakDates, today) {
-        buildCalendarDays(visibleMonth, streakDates, today)
+    val calendarDays = remember(visibleMonth, streakDates, activityByDate, today) {
+        buildCalendarDays(visibleMonth, streakDates, activityByDate, today)
     }
     val streakCount = calculateCurrentStreakForRoutine(streakDates, today)
 
@@ -2544,6 +2613,12 @@ private fun RoutineCard(
             calendarDays.chunked(7).forEach { week ->
                 CalendarWeekRow(days = week)
             }
+
+            RoutineCalendarLegend(
+                showGenericActivity = activityByDate.values.any { activities ->
+                    RoutineCalendarActivity.ACTIVITY in activities
+                }
+            )
         }
     }
 }
@@ -2552,12 +2627,14 @@ private data class CalendarDayUi(
     val date: LocalDate,
     val isCurrentMonth: Boolean,
     val isInStreak: Boolean,
-    val isToday: Boolean
+    val isToday: Boolean,
+    val activities: Set<RoutineCalendarActivity>
 )
 
 private fun buildCalendarDays(
     visibleMonth: YearMonth,
     streakDates: Set<LocalDate>,
+    activityByDate: Map<LocalDate, Set<RoutineCalendarActivity>>,
     today: LocalDate
 ): List<CalendarDayUi> {
     val firstOfMonth = visibleMonth.atDay(1)
@@ -2568,9 +2645,10 @@ private fun buildCalendarDays(
         val date = gridStart.plusDays(index.toLong())
         CalendarDayUi(
             date = date,
-            isCurrentMonth = date.month == visibleMonth.month,
+            isCurrentMonth = YearMonth.from(date) == visibleMonth,
             isInStreak = streakDates.contains(date),
-            isToday = date == today
+            isToday = date == today,
+            activities = activityByDate[date].orEmpty()
         )
     }
 }
@@ -2606,9 +2684,12 @@ private fun CalendarWeekRow(days: List<CalendarDayUi>) {
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(32.dp)
+                    .height(40.dp)
                     .clip(streakShape)
-                    .background(if (day.isInStreak) StreakHighlight else Color.Transparent),
+                    .background(if (day.isInStreak) StreakHighlight else Color.Transparent)
+                    .semantics {
+                        contentDescription = calendarDayDescription(day)
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 val dayTextColor = if (day.isCurrentMonth) SecondaryText else SecondaryText.copy(alpha = 0.65f)
@@ -2621,16 +2702,36 @@ private fun CalendarWeekRow(days: List<CalendarDayUi>) {
                     Modifier
                 }
 
-                Box(
-                    modifier = todayIndicatorModifier,
-                    contentAlignment = Alignment.Center
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = day.date.dayOfMonth.toString(),
-                        color = if (day.isToday) PrimaryText else dayTextColor,
-                        fontSize = 12.sp,
-                        lineHeight = 12.sp
-                    )
+                    Box(
+                        modifier = todayIndicatorModifier,
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = day.date.dayOfMonth.toString(),
+                            color = if (day.isToday) PrimaryText else dayTextColor,
+                            fontSize = 12.sp,
+                            lineHeight = 12.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    if (day.activities.isEmpty()) {
+                        Spacer(modifier = Modifier.height(7.dp))
+                    } else {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RoutineCalendarActivity.entries.forEach { activity ->
+                                if (activity in day.activities) {
+                                    RoutineCalendarMarker(activity = activity, size = 7.dp)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2638,75 +2739,93 @@ private fun CalendarWeekRow(days: List<CalendarDayUi>) {
 }
 
 @Composable
-private fun BottomNavigationBar(
-    modifier: Modifier = Modifier,
-    onWorkoutClick: () -> Unit,
-    onProgressClick: () -> Unit,
-    onProfileClick: () -> Unit
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(BottomBarBg)
-                .border(width = 1.dp, color = Color(0x80D6AA98))
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            BottomNavItem(label = "Home", icon = R.drawable.home_nav_home_curr, textColor = Color(0xFFBF7E65), onClick = {})
-            BottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout, textColor = InactiveIcon, onClick = onWorkoutClick)
-            BottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress, textColor = InactiveIcon, onClick = onProgressClick)
-            BottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = InactiveIcon, onClick = onProfileClick)
+private fun RoutineCalendarLegend(showGenericActivity: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RoutineCalendarLegendItem(
+            activity = RoutineCalendarActivity.WORKOUT,
+            label = "Workout"
+        )
+        RoutineCalendarLegendItem(
+            activity = RoutineCalendarActivity.QUICK_LOG,
+            label = "Quick log"
+        )
+        RoutineCalendarLegendItem(
+            activity = RoutineCalendarActivity.REST_DAY,
+            label = "Rest"
+        )
+        if (showGenericActivity) {
+            RoutineCalendarLegendItem(
+                activity = RoutineCalendarActivity.ACTIVITY,
+                label = "Activity"
+            )
         }
+    }
+}
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsBottomHeight(WindowInsets.navigationBars)
-                .background(
-                    color = BottomBarBg,
-                    shape = RoundedCornerShape(
-                        topStart = 0.dp,
-                        topEnd = 0.dp,
-                        bottomStart = HomeBottomInsetCorner,
-                        bottomEnd = HomeBottomInsetCorner
-                    )
-                )
+@Composable
+private fun RoutineCalendarLegendItem(
+    activity: RoutineCalendarActivity,
+    label: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        RoutineCalendarMarker(activity = activity, size = 8.dp)
+        Text(
+            text = label,
+            color = SecondaryText,
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
 
 @Composable
-private fun BottomNavItem(
-    label: String,
-    icon: Int,
-    textColor: Color,
-    iconWidth: Dp = 24.dp,
-    iconHeight: Dp = 24.dp,
-    iconContentScale: ContentScale = ContentScale.Fit,
-    onClick: () -> Unit
+private fun RoutineCalendarMarker(
+    activity: RoutineCalendarActivity,
+    size: Dp
 ) {
-    Column(
-        modifier = Modifier
-            .noRippleClickable(onClick)
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Image(
-            painter = painterResource(id = icon),
-            contentDescription = label,
-            modifier = Modifier
-                .width(iconWidth)
-                .height(iconHeight),
-            contentScale = iconContentScale
-        )
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = 13.sp,
-            lineHeight = 10.sp
-        )
+    val color = when (activity) {
+        RoutineCalendarActivity.WORKOUT -> CalendarWorkout
+        RoutineCalendarActivity.QUICK_LOG -> CalendarQuickLog
+        RoutineCalendarActivity.REST_DAY -> CalendarRestDay
+        RoutineCalendarActivity.ACTIVITY -> CalendarActivity
+    }
+    val shape = when (activity) {
+        RoutineCalendarActivity.QUICK_LOG -> RoundedCornerShape(1.dp)
+        else -> CircleShape
+    }
+    val baseModifier = Modifier.size(size)
+    Box(
+        modifier = if (activity == RoutineCalendarActivity.REST_DAY) {
+            baseModifier.border(width = 1.5.dp, color = color, shape = shape)
+        } else {
+            baseModifier.background(color = color, shape = shape)
+        }
+    )
+}
+
+private fun calendarDayDescription(day: CalendarDayUi): String {
+    val activityDescription = day.activities.joinToString(separator = ", ") { activity ->
+        when (activity) {
+            RoutineCalendarActivity.WORKOUT -> "workout"
+            RoutineCalendarActivity.QUICK_LOG -> "quick log"
+            RoutineCalendarActivity.REST_DAY -> "rest day"
+            RoutineCalendarActivity.ACTIVITY -> "activity"
+        }
+    }
+    return buildString {
+        append(day.date.format(DateTimeFormatter.ofPattern("d MMMM", Locale.getDefault())))
+        if (day.isToday) append(", today")
+        if (activityDescription.isNotBlank()) append(", $activityDescription")
     }
 }
 
@@ -2741,7 +2860,9 @@ private fun HomeOneScreenPreview() {
 private fun RestDayDetailsPreview() {
     MaterialTheme {
         RestDayDetailsContent(
+            isAlreadyLogged = false,
             onSaveRestDay = {},
+            onAddLightActivity = {},
             onBackClick = {}
         )
     }

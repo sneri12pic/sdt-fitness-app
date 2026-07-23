@@ -26,6 +26,13 @@ enum class QuickLogType {
     CUSTOM
 }
 
+enum class RoutineCalendarActivity {
+    WORKOUT,
+    QUICK_LOG,
+    REST_DAY,
+    ACTIVITY
+}
+
 data class QuickLogEntry(
     val quickLogType: QuickLogType,
     val durationMinutes: Int,
@@ -124,6 +131,7 @@ data class HomeDashboardState(
     val waterIntakeQuest: WaterIntakeQuestState = WaterIntakeQuestState(),
     val dailyGoalSummary: DailyGoalSummaryState = DailyGoalSummaryState(),
     val routineStreakDates: Set<LocalDate> = emptySet(),
+    val routineCalendarActivities: Map<LocalDate, Set<RoutineCalendarActivity>> = emptyMap(),
     val restDay: RestDayUiState = RestDayUiState(),
     val quickLogToday: QuickLogEntry? = null,
     val healthConnectLastSyncedAtMillis: Long? = null,
@@ -197,4 +205,32 @@ fun calculateCurrentStreak(
         cursor = cursor.minusDays(1)
     }
     return streak
+}
+
+fun buildRoutineCalendarActivityMap(
+    routineDates: Set<LocalDate>,
+    workoutDates: Set<LocalDate>,
+    quickLogDates: Set<LocalDate>,
+    restDayDates: Set<LocalDate>
+): Map<LocalDate, Set<RoutineCalendarActivity>> {
+    val activitiesByDate = linkedMapOf<LocalDate, MutableSet<RoutineCalendarActivity>>()
+
+    fun addDates(dates: Set<LocalDate>, activity: RoutineCalendarActivity) {
+        dates.sorted().forEach { date ->
+            activitiesByDate.getOrPut(date) { linkedSetOf() }.add(activity)
+        }
+    }
+
+    addDates(workoutDates, RoutineCalendarActivity.WORKOUT)
+    addDates(quickLogDates, RoutineCalendarActivity.QUICK_LOG)
+    addDates(restDayDates, RoutineCalendarActivity.REST_DAY)
+
+    routineDates.sorted().forEach { date ->
+        if (activitiesByDate[date].isNullOrEmpty()) {
+            activitiesByDate.getOrPut(date) { linkedSetOf() }
+                .add(RoutineCalendarActivity.ACTIVITY)
+        }
+    }
+
+    return activitiesByDate.mapValues { (_, activities) -> activities.toSet() }
 }

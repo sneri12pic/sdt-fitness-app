@@ -91,6 +91,8 @@ data class UserSettingsEntity(
     val workoutCompletedDatesCsv: String = "",
     val activeMinutesToday: Int = 0,
     val routineCompletedDatesCsv: String = "",
+    @ColumnInfo(defaultValue = "") val restDayDatesCsv: String = "",
+    @ColumnInfo(defaultValue = "") val quickLogDatesCsv: String = "",
     val recoveryLogDate: String? = null,
     val recoveryLogOption: String? = null,
     val recoveryLogAtMillis: Long? = null,
