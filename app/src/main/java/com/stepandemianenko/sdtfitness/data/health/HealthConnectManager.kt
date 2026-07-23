@@ -5,11 +5,15 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.HydrationRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.WeightRecord
+import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import androidx.health.connect.client.units.Volume
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -34,6 +38,13 @@ class HealthConnectManager(
         HealthPermission.getReadPermission(WeightRecord::class)
     )
 
+    val writePermissions: Set<String> = setOf(
+        HealthPermission.getWritePermission(HydrationRecord::class),
+        HealthPermission.getWritePermission(ExerciseSessionRecord::class)
+    )
+
+    val allPermissions: Set<String> = readPermissions + writePermissions
+
     fun getSdkStatus(): Int {
         return HealthConnectClient.getSdkStatus(appContext, PROVIDER_PACKAGE_NAME)
     }
@@ -48,6 +59,52 @@ class HealthConnectManager(
         if (!isAvailable()) return false
         val granted = healthConnectClient().permissionController.getGrantedPermissions()
         return granted.containsAll(readPermissions)
+    }
+
+    suspend fun hasWritePermissions(): Boolean {
+        if (!isAvailable()) return false
+        val granted = healthConnectClient().permissionController.getGrantedPermissions()
+        return granted.containsAll(writePermissions)
+    }
+
+    /** Upserts one water log; [logId] keys the HC record so re-pushes don't duplicate. */
+    suspend fun writeWaterLog(logId: Long, amountMl: Int, timestampMillis: Long) {
+        if (!isAvailable()) return
+        val start = Instant.ofEpochMilli(timestampMillis)
+        val offset = ZoneId.systemDefault().rules.getOffset(start)
+        healthConnectClient().insertRecords(
+            listOf(
+                HydrationRecord(
+                    startTime = start,
+                    startZoneOffset = offset,
+                    endTime = start.plusSeconds(60),
+                    endZoneOffset = offset,
+                    volume = Volume.milliliters(amountMl.toDouble()),
+                    metadata = Metadata.manualEntryWithId("water_$logId")
+                )
+            )
+        )
+    }
+
+    /** Upserts one completed workout session; [sessionId] keys the HC record so re-pushes don't duplicate. */
+    suspend fun writeWorkoutSession(sessionId: Long, startedAtMillis: Long, completedAtMillis: Long) {
+        if (!isAvailable()) return
+        val start = Instant.ofEpochMilli(startedAtMillis)
+        val end = Instant.ofEpochMilli(completedAtMillis.coerceAtLeast(startedAtMillis + 60_000L))
+        val zone = ZoneId.systemDefault()
+        healthConnectClient().insertRecords(
+            listOf(
+                ExerciseSessionRecord(
+                    startTime = start,
+                    startZoneOffset = zone.rules.getOffset(start),
+                    endTime = end,
+                    endZoneOffset = zone.rules.getOffset(end),
+                    exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
+                    title = "Workout",
+                    metadata = Metadata.manualEntryWithId("workout_$sessionId")
+                )
+            )
+        )
     }
 
     /** Contract to launch the Health Connect permission sheet; pass [readPermissions] when launching. */

@@ -2,6 +2,7 @@ package com.stepandemianenko.sdtfitness.data.repository
 
 import androidx.room.withTransaction
 import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.health.HealthShareManager
 import com.stepandemianenko.sdtfitness.data.local.SessionExerciseDao
 import com.stepandemianenko.sdtfitness.data.local.SessionExerciseEntity
 import com.stepandemianenko.sdtfitness.data.local.SessionExerciseStatus
@@ -140,7 +141,8 @@ sealed interface LogSetOutcome {
 
 class WorkoutSessionRepository(
     private val database: WorkoutDatabase,
-    private val accountSessionManager: AccountSessionManager
+    private val accountSessionManager: AccountSessionManager,
+    private val healthShare: HealthShareManager
 ) {
     private val sessionDao: WorkoutSessionDao = database.workoutSessionDao()
     private val exerciseDao: SessionExerciseDao = database.sessionExerciseDao()
@@ -996,7 +998,9 @@ class WorkoutSessionRepository(
 
     suspend fun completeSession(sessionId: Long): Boolean {
         val accountId = accountSessionManager.requireActiveAccountId()
-        return database.withTransaction {
+        // Set only on a fresh completion, so re-completing doesn't re-push to Health Connect.
+        var completionRange: Pair<Long, Long>? = null
+        val completed = database.withTransaction {
             val session = sessionDao.getById(accountId = accountId, sessionId = sessionId)
                 ?: return@withTransaction false
 
@@ -1035,8 +1039,17 @@ class WorkoutSessionRepository(
                     updatedAt = now
                 )
             )
+            completionRange = session.startedAt to now
             true
         }
+        completionRange?.let { (startedAt, completedAt) ->
+            healthShare.autoPushWorkout(
+                sessionId = sessionId,
+                startedAtMillis = startedAt,
+                completedAtMillis = completedAt
+            )
+        }
+        return completed
     }
 
     private suspend fun recalculateActiveSessionState(

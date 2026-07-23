@@ -2,6 +2,7 @@ package com.stepandemianenko.sdtfitness.home
 
 import androidx.room.withTransaction
 import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
+import com.stepandemianenko.sdtfitness.data.health.HealthShareManager
 import com.stepandemianenko.sdtfitness.data.local.DailyQuestId
 import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordDao
 import com.stepandemianenko.sdtfitness.data.local.DailyQuestRecordEntity
@@ -26,7 +27,8 @@ import java.time.LocalDate
 
 class HomeRepository(
     private val database: WorkoutDatabase,
-    private val accountSessionManager: AccountSessionManager
+    private val accountSessionManager: AccountSessionManager,
+    private val healthShare: HealthShareManager
 ) {
     private val userSettingsDao: UserSettingsDao = database.userSettingsDao()
     private val dailyQuestRecordDao: DailyQuestRecordDao = database.dailyQuestRecordDao()
@@ -235,11 +237,11 @@ class HomeRepository(
             val accountId = accountSessionManager.requireActiveAccountId()
             val now = System.currentTimeMillis()
             val todayKey = LocalDate.now().toString()
-            database.withTransaction {
+            val (logId, portionMl) = database.withTransaction {
                 val settings = userSettingsDao.getByAccountId(accountId)
                     ?: defaultSettings(accountId = accountId, now = now)
                 val portionMl = settings.waterPortionMl.coerceAtLeast(1)
-                waterIntakeLogDao.insert(
+                val logId = waterIntakeLogDao.insert(
                     WaterIntakeLogEntity(
                         accountId = accountId,
                         date = todayKey,
@@ -250,7 +252,9 @@ class HomeRepository(
                         syncState = SyncState.LOCAL_ONLY
                     )
                 )
+                logId to portionMl
             }
+            healthShare.autoPushWater(logId = logId, amountMl = portionMl, timestampMillis = now)
             publishUpdatedState(accountId = accountId)
         }
     }

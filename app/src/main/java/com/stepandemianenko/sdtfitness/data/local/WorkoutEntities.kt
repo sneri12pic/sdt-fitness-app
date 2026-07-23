@@ -115,6 +115,7 @@ data class UserSettingsEntity(
     @ColumnInfo(defaultValue = "1") val routineReminderEnabled: Boolean = true,
     @ColumnInfo(defaultValue = "") val routineReminderTimesCsv: String = "",
     @ColumnInfo(defaultValue = "") val routineCustomReminderTimesCsv: String = "",
+    @ColumnInfo(defaultValue = "OFF") val healthShareMode: String = "OFF",
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,

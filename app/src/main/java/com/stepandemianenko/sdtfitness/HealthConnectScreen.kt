@@ -29,7 +29,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -41,9 +40,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.stepandemianenko.sdtfitness.data.health.HealthShareMode
 import com.stepandemianenko.sdtfitness.profile.HealthConnectStatus
 import com.stepandemianenko.sdtfitness.profile.HealthConnectUiState
 import com.stepandemianenko.sdtfitness.profile.HealthConnectViewModel
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // Same warm palette the rest of Profile uses.
@@ -55,10 +58,10 @@ private val HcIconCircle = Color(0xBBF88863)
 private const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
 
 /**
- * Read-only Health Connect hub (Phase 1). Rendered inside Profile's scrolling column, so it emits
- * content only (no Surface/Scaffold of its own), like RoutineSetupContent. Lets the user connect
- * (grant read permissions), see imported steps/weight + their app data, and disconnect. Writing is
- * deferred — the sharing section is a disabled preview.
+ * Health Connect hub. Rendered inside Profile's scrolling column, so it emits content only
+ * (no Surface/Scaffold of its own), like RoutineSetupContent. Lets the user connect, see imported
+ * steps/weight + their app data, choose how Water/Workouts are shared (Auto / Manual / Off), and
+ * disconnect.
  */
 @Composable
 fun HealthConnectScreen(
@@ -131,7 +134,12 @@ fun HealthConnectScreen(
 
     InAppDataCard(uiState = uiState)
 
-    SharingPreviewCard()
+    SharingCard(
+        uiState = uiState,
+        onModeSelected = viewModel::setShareMode,
+        onSyncNowClick = viewModel::syncNow,
+        onGrantWriteClick = { permissionLauncher.launch(viewModel.requestedPermissions) }
+    )
 
     if (uiState.isConnected) {
         TextButton(onClick = viewModel::disconnect, modifier = Modifier.fillMaxWidth()) {
@@ -213,41 +221,81 @@ private fun InAppDataCard(uiState: HealthConnectUiState) {
 }
 
 @Composable
-private fun SharingPreviewCard() {
+private fun SharingCard(
+    uiState: HealthConnectUiState,
+    onModeSelected: (HealthShareMode) -> Unit,
+    onSyncNowClick: () -> Unit,
+    onGrantWriteClick: () -> Unit
+) {
     HcCard {
-        Box(modifier = Modifier.alpha(0.55f)) {
-            Column {
-                HcCardTitle("Share your data")
-                Text(
-                    text = "Choose how Water and Workouts are pushed to Health Connect.",
-                    color = HcSecondaryText,
-                    fontSize = 13.sp,
-                    lineHeight = 16.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Auto", "Manual", "Off").forEach { mode ->
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .border(1.dp, HcSecondaryText.copy(alpha = 0.4f), RoundedCornerShape(50))
-                                .padding(horizontal = 12.dp, vertical = 5.dp)
-                        ) {
-                            Text(text = mode, color = HcSecondaryText, fontSize = 13.sp, lineHeight = 14.sp)
-                        }
-                    }
+        HcCardTitle("Share your data")
+        Text(
+            text = "Choose how Water and Workouts are pushed to Health Connect.",
+            color = HcSecondaryText,
+            fontSize = 13.sp,
+            lineHeight = 16.sp
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HealthShareMode.entries.forEach { mode ->
+                val selected = mode == uiState.shareMode
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (selected) HcAccent else Color.Transparent)
+                        .border(
+                            width = 1.dp,
+                            color = if (selected) HcAccent else HcSecondaryText.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .clickable(enabled = uiState.isConnected) { onModeSelected(mode) }
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = mode.name.lowercase().replaceFirstChar { it.uppercase() },
+                        color = if (selected) Color.White else HcSecondaryText,
+                        fontSize = 13.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                    )
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Enabled during onboarding",
-            color = HcAccent,
-            fontSize = 12.sp,
-            lineHeight = 14.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        Spacer(modifier = Modifier.height(10.dp))
+        when {
+            !uiState.isConnected -> HcSharingFooter("Connect to Health Connect to share your data.")
+            uiState.needsWriteAccess -> {
+                HcSharingFooter("Health Connect needs write access before anything can be shared.")
+                Spacer(modifier = Modifier.height(8.dp))
+                HcPrimaryButton(label = "Allow write access", onClick = onGrantWriteClick)
+            }
+            uiState.shareMode == HealthShareMode.AUTO ->
+                HcSharingFooter("Water and workouts are pushed automatically when you log them.")
+            uiState.shareMode == HealthShareMode.MANUAL -> {
+                HcPrimaryButton(
+                    label = if (uiState.isSyncing) "Syncing…" else "Sync now",
+                    onClick = onSyncNowClick,
+                    enabled = !uiState.isSyncing
+                )
+                uiState.lastSyncedAt?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HcSharingFooter("Last synced ${formatSyncTime(it)}")
+                }
+            }
+            else -> HcSharingFooter("Nothing is shared with Health Connect.")
+        }
     }
+}
+
+@Composable
+private fun HcSharingFooter(text: String) {
+    Text(text = text, color = HcSecondaryText, fontSize = 12.sp, lineHeight = 15.sp)
+}
+
+private fun formatSyncTime(millis: Long): String {
+    return Instant.ofEpochMilli(millis)
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("MMM d, HH:mm"))
 }
 
 @Composable
@@ -281,9 +329,10 @@ private fun HcStatRow(label: String, value: String) {
 }
 
 @Composable
-private fun HcPrimaryButton(label: String, onClick: () -> Unit) {
+private fun HcPrimaryButton(label: String, onClick: () -> Unit, enabled: Boolean = true) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().height(48.dp),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(containerColor = HcAccent, contentColor = Color.White)
@@ -311,7 +360,17 @@ private fun HealthConnectScreenPreview() {
                 onUpdateClick = {}
             )
             InAppDataCard(uiState = HealthConnectUiState())
-            SharingPreviewCard()
+            SharingCard(
+                uiState = HealthConnectUiState(
+                    status = HealthConnectStatus.CONNECTED,
+                    isLoading = false,
+                    shareMode = HealthShareMode.MANUAL,
+                    hasWritePermissions = true
+                ),
+                onModeSelected = {},
+                onSyncNowClick = {},
+                onGrantWriteClick = {}
+            )
         }
     }
 }

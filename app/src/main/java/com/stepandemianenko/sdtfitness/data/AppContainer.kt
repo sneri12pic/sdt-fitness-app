@@ -10,6 +10,7 @@ import com.stepandemianenko.sdtfitness.auth.domain.AuthRepository
 import com.stepandemianenko.sdtfitness.data.account.AccountSessionManager
 import com.stepandemianenko.sdtfitness.data.cache.ProgressMemoryCache
 import com.stepandemianenko.sdtfitness.data.health.HealthConnectManager
+import com.stepandemianenko.sdtfitness.data.health.HealthShareManager
 import com.stepandemianenko.sdtfitness.data.local.WorkoutDatabase
 import com.stepandemianenko.sdtfitness.data.repository.ExerciseCatalogRepository
 import com.stepandemianenko.sdtfitness.data.repository.ProgressRepositoryImpl
@@ -44,7 +45,8 @@ class AppContainer(context: Context) {
     val workoutSessionRepository: WorkoutSessionRepository by lazy {
         WorkoutSessionRepository(
             database = database,
-            accountSessionManager = accountSessionManager
+            accountSessionManager = accountSessionManager,
+            healthShare = healthShareManager
         )
     }
 
@@ -74,7 +76,8 @@ class AppContainer(context: Context) {
     val homeRepository: HomeRepository by lazy {
         HomeRepository(
             database = database,
-            accountSessionManager = accountSessionManager
+            accountSessionManager = accountSessionManager,
+            healthShare = healthShareManager
         )
     }
 
@@ -92,6 +95,14 @@ class AppContainer(context: Context) {
 
     val healthConnectManager: HealthConnectManager by lazy {
         HealthConnectManager(appContext)
+    }
+
+    val healthShareManager: HealthShareManager by lazy {
+        HealthShareManager(
+            database = database,
+            accountSessionManager = accountSessionManager,
+            healthConnect = healthConnectManager
+        )
     }
 
     val authRepository: AuthRepository by lazy {
