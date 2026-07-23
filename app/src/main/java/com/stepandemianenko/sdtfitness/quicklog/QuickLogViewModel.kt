@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 private val QuickLogDefaultDurations = listOf(5, 15, 20, 30)
 data class QuickLogUiState(
     val selectedType: QuickLogType = QuickLogType.WALK,
-    val selectedDurationMinutes: Int = QuickLogDefaultDurations.first(),
+    val selectedDurationMinutes: Int = 15,
     val availableDurations: List<Int> = QuickLogDefaultDurations,
     val isSaving: Boolean = false
 )
@@ -79,7 +79,7 @@ class QuickLogViewModel(
         _uiState.update {
             it.copy(
                 selectedType = QuickLogType.WALK,
-                selectedDurationMinutes = QuickLogDefaultDurations.first(),
+                selectedDurationMinutes = 15,
                 isSaving = false
             )
         }

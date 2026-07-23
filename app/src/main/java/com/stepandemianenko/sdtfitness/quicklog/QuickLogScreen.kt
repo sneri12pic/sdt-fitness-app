@@ -1,9 +1,8 @@
 package com.stepandemianenko.sdtfitness.quicklog
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,11 +18,14 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,7 +34,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -41,15 +45,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.R
 import com.stepandemianenko.sdtfitness.home.QuickLogType
-
-import com.stepandemianenko.sdtfitness.ui.theme.*
-
-private val QuickLogTopPadding = 0.dp
-private val QuickLogBottomPadding = 0.dp
+import java.util.Locale
 
 @Composable
 fun QuickLogRoute(
@@ -63,7 +64,12 @@ fun QuickLogRoute(
     viewModel: QuickLogViewModel = viewModel(factory = QuickLogViewModel.Factory)
 ) {
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
-    val successMessage = androidx.compose.ui.res.stringResource(id = R.string.quick_log_saved_message)
+    val selectedActivityName = quickLogActivityName(uiState.selectedType)
+    val successMessage = stringResource(
+        id = R.string.quick_log_saved_message,
+        uiState.selectedDurationMinutes,
+        selectedActivityName.lowercase(Locale.getDefault())
+    )
 
     LaunchedEffect(Unit) {
         viewModel.onEvent(QuickLogEvent.InitializeDefaults)
@@ -104,100 +110,29 @@ fun QuickLogScreen(
     primaryTextColor: Color,
     secondaryTextColor: Color
 ) {
-    val contentSpacing = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_content_spacing)
+    val selectedActivityName = quickLogActivityName(uiState.selectedType)
+    val actionActivityName = selectedActivityName.lowercase(Locale.getDefault())
 
     Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(contentSpacing)
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        BackToHomeRow(
-            onClick = onBackClick,
+        QuickLogHeader(
+            onCloseClick = onBackClick,
             primaryTextColor = primaryTextColor,
             secondaryTextColor = secondaryTextColor
         )
-        QuickLogCard(
-            uiState = uiState,
-            onActivitySelected = onActivitySelected,
-            onDurationSelected = onDurationSelected,
-            onSaveClick = onSaveClick,
-            cardColor = cardColor,
-            accentColor = accentColor,
-            primaryTextColor = primaryTextColor,
-            secondaryTextColor = secondaryTextColor
-        )
-    }
-}
 
-@Composable
-fun BackToHomeRow(
-    onClick: () -> Unit,
-    primaryTextColor: Color,
-    secondaryTextColor: Color
-) {
-    Row(
-        modifier = Modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "‹",
-            color = primaryTextColor,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Medium
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = androidx.compose.ui.res.stringResource(id = R.string.rest_day_back_to_home),
-            color = secondaryTextColor,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
-@Composable
-fun QuickLogCard(
-    uiState: QuickLogUiState,
-    onActivitySelected: (QuickLogType) -> Unit,
-    onDurationSelected: (Int) -> Unit,
-    onSaveClick: () -> Unit,
-    cardColor: Color,
-    accentColor: Color,
-    primaryTextColor: Color,
-    secondaryTextColor: Color
-) {
-    val cardCornerRadius = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_card_corner_radius)
-    val cardHorizontalPadding = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_card_horizontal_padding)
-    val cardVerticalPadding = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_card_vertical_padding)
-    val contentSpacing = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_content_spacing)
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(cardCornerRadius),
-        color = cardColor
-    ) {
-        Column(
-            modifier = Modifier.padding(
-                horizontal = cardHorizontalPadding,
-                vertical = cardVerticalPadding
-            ),
-            verticalArrangement = Arrangement.spacedBy(contentSpacing)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = androidx.compose.ui.res.stringResource(id = R.string.quick_log_title),
-                    color = primaryTextColor,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = androidx.compose.ui.res.stringResource(id = R.string.quick_log_subtitle),
-                    color = secondaryTextColor,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = stringResource(id = R.string.quick_log_activity_label),
+                color = primaryTextColor,
+                fontSize = 17.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.SemiBold
+            )
             QuickLogOptionRow(
                 selectedType = uiState.selectedType,
                 onTypeSelected = onActivitySelected,
@@ -206,7 +141,16 @@ fun QuickLogCard(
                 primaryTextColor = primaryTextColor,
                 secondaryTextColor = secondaryTextColor
             )
+        }
 
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = stringResource(id = R.string.quick_log_duration_label),
+                color = primaryTextColor,
+                fontSize = 17.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.SemiBold
+            )
             DurationChipRow(
                 selectedDurationMinutes = uiState.selectedDurationMinutes,
                 durations = uiState.availableDurations,
@@ -216,20 +160,66 @@ fun QuickLogCard(
                 primaryTextColor = primaryTextColor,
                 secondaryTextColor = secondaryTextColor
             )
+        }
 
-            SaveQuickLogButton(
-                onClick = onSaveClick,
-                isSaving = uiState.isSaving,
-                accentColor = accentColor,
-                cardColor = cardColor
-            )
+        QuickLogSummary(
+            activityName = selectedActivityName,
+            durationMinutes = uiState.selectedDurationMinutes,
+            accentColor = accentColor,
+            primaryTextColor = primaryTextColor,
+            secondaryTextColor = secondaryTextColor
+        )
 
+        SaveQuickLogButton(
+            label = stringResource(
+                id = R.string.quick_log_save_button,
+                uiState.selectedDurationMinutes,
+                actionActivityName
+            ),
+            onClick = onSaveClick,
+            isSaving = uiState.isSaving,
+            accentColor = accentColor,
+            primaryTextColor = primaryTextColor
+        )
+    }
+}
+
+@Composable
+private fun QuickLogHeader(
+    onCloseClick: () -> Unit,
+    primaryTextColor: Color,
+    secondaryTextColor: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
-                text = androidx.compose.ui.res.stringResource(id = R.string.quick_log_helper_text),
+                text = stringResource(id = R.string.quick_log_title),
+                color = primaryTextColor,
+                fontSize = 26.sp,
+                lineHeight = 30.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = stringResource(id = R.string.quick_log_subtitle),
                 color = secondaryTextColor,
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
+        }
+        IconButton(
+            onClick = onCloseClick,
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = stringResource(id = R.string.quick_log_close),
+                tint = primaryTextColor
             )
         }
     }
@@ -244,23 +234,14 @@ fun QuickLogOptionRow(
     primaryTextColor: Color,
     secondaryTextColor: Color
 ) {
-    val optionSpacing = androidx.compose.ui.res.dimensionResource(id = R.dimen.rest_day_option_spacing)
-
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(optionSpacing)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         QuickLogOptionItem(
             modifier = Modifier.weight(1f),
-            type = QuickLogType.WALK,
-            label = androidx.compose.ui.res.stringResource(id = R.string.quick_log_option_walk),
-            icon = {
-                Image(
-                    painter = painterResource(id = R.drawable.home_shoes),
-                    contentDescription = androidx.compose.ui.res.stringResource(id = R.string.quick_log_walk_icon_cd),
-                    modifier = Modifier.size(34.dp)
-                )
-            },
+            label = stringResource(id = R.string.quick_log_option_walk),
+            iconRes = R.drawable.home_shoes,
             isSelected = selectedType == QuickLogType.WALK,
             onClick = { onTypeSelected(QuickLogType.WALK) },
             accentColor = accentColor,
@@ -270,45 +251,10 @@ fun QuickLogOptionRow(
         )
         QuickLogOptionItem(
             modifier = Modifier.weight(1f),
-            type = QuickLogType.MOBILITY,
-            label = androidx.compose.ui.res.stringResource(id = R.string.quick_log_option_mobility),
-            icon = {
-                Image(
-                    painter = painterResource(id = R.drawable.stretch),
-                    contentDescription = androidx.compose.ui.res.stringResource(id = R.string.quick_log_mobility_icon_cd),
-                    modifier = Modifier.size(34.dp)
-                )
-            },
+            label = stringResource(id = R.string.quick_log_option_mobility),
+            iconRes = R.drawable.stretch,
             isSelected = selectedType == QuickLogType.MOBILITY,
             onClick = { onTypeSelected(QuickLogType.MOBILITY) },
-            accentColor = accentColor,
-            cardColor = cardColor,
-            primaryTextColor = primaryTextColor,
-            secondaryTextColor = secondaryTextColor
-        )
-        QuickLogOptionItem(
-            modifier = Modifier.weight(1f),
-            type = QuickLogType.CUSTOM,
-            label = androidx.compose.ui.res.stringResource(id = R.string.quick_log_option_custom),
-            icon = {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(
-                            color = accentColor.copy(alpha = if (selectedType == QuickLogType.CUSTOM) 1f else 0.22f),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = androidx.compose.ui.res.stringResource(id = R.string.quick_log_custom_icon_cd),
-                        tint = if (selectedType == QuickLogType.CUSTOM) cardColor else accentColor
-                    )
-                }
-            },
-            isSelected = selectedType == QuickLogType.CUSTOM,
-            onClick = { onTypeSelected(QuickLogType.CUSTOM) },
             accentColor = accentColor,
             cardColor = cardColor,
             primaryTextColor = primaryTextColor,
@@ -318,11 +264,10 @@ fun QuickLogOptionRow(
 }
 
 @Composable
-fun QuickLogOptionItem(
-    modifier: Modifier = Modifier,
-    type: QuickLogType,
+private fun QuickLogOptionItem(
+    modifier: Modifier,
     label: String,
-    icon: @Composable () -> Unit,
+    iconRes: Int,
     isSelected: Boolean,
     onClick: () -> Unit,
     accentColor: Color,
@@ -330,17 +275,13 @@ fun QuickLogOptionItem(
     primaryTextColor: Color,
     secondaryTextColor: Color
 ) {
-    val optionCornerRadius = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_option_corner_radius)
-    val optionHeight = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_option_height)
-    val optionInnerSpacing = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_option_inner_spacing)
-    val selectedDescription = androidx.compose.ui.res.stringResource(id = R.string.quick_log_selected_state)
-    val unselectedDescription = androidx.compose.ui.res.stringResource(id = R.string.quick_log_not_selected_state)
-    val borderColor = if (isSelected) accentColor else secondaryTextColor.copy(alpha = 0.20f)
-    val containerColor = if (isSelected) accentColor.copy(alpha = 0.13f) else cardColor.copy(alpha = 0.72f)
+    val selectedDescription = stringResource(id = R.string.quick_log_selected_state)
+    val unselectedDescription = stringResource(id = R.string.quick_log_not_selected_state)
+    val shape = RoundedCornerShape(16.dp)
 
     Box(
         modifier = modifier
-            .height(optionHeight)
+            .height(108.dp)
             .selectable(
                 selected = isSelected,
                 onClick = onClick,
@@ -350,31 +291,57 @@ fun QuickLogOptionItem(
                 selected = isSelected
                 stateDescription = if (isSelected) selectedDescription else unselectedDescription
             }
-            .border(width = 1.dp, color = borderColor, shape = RoundedCornerShape(optionCornerRadius))
-            .background(color = containerColor, shape = RoundedCornerShape(optionCornerRadius))
-            .padding(horizontal = 8.dp, vertical = 10.dp)
+            .background(
+                color = if (isSelected) accentColor.copy(alpha = 0.14f) else cardColor,
+                shape = shape
+            )
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) accentColor else secondaryTextColor.copy(alpha = 0.20f),
+                shape = shape
+            )
+            .padding(12.dp)
     ) {
         if (isSelected) {
-            Icon(
-                imageVector = Icons.Filled.Check,
-                contentDescription = null,
-                tint = accentColor,
+            Box(
                 modifier = Modifier
-                    .size(14.dp)
                     .align(Alignment.TopEnd)
-            )
+                    .size(22.dp)
+                    .background(accentColor, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = primaryTextColor,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
         }
 
         Column(
             modifier = Modifier.align(Alignment.Center),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(optionInnerSpacing)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            icon()
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .background(accentColor.copy(alpha = 0.18f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = iconRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(34.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
             Text(
                 text = label,
                 color = if (isSelected) primaryTextColor else secondaryTextColor,
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 14.sp,
+                lineHeight = 18.sp,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
             )
         }
@@ -391,14 +358,13 @@ fun DurationChipRow(
     primaryTextColor: Color,
     secondaryTextColor: Color
 ) {
-    val chipSpacing = androidx.compose.ui.res.dimensionResource(id = R.dimen.rest_day_option_spacing)
-
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(chipSpacing)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         durations.forEach { minutes ->
             DurationChip(
+                modifier = Modifier.weight(1f),
                 minutes = minutes,
                 isSelected = selectedDurationMinutes == minutes,
                 onClick = { onDurationSelected(minutes) },
@@ -413,6 +379,7 @@ fun DurationChipRow(
 
 @Composable
 private fun DurationChip(
+    modifier: Modifier,
     minutes: Int,
     isSelected: Boolean,
     onClick: () -> Unit,
@@ -421,14 +388,13 @@ private fun DurationChip(
     primaryTextColor: Color,
     secondaryTextColor: Color
 ) {
-    val chipCornerRadius = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_chip_corner_radius)
-    val chipHorizontalPadding = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_chip_horizontal_padding)
-    val chipVerticalPadding = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_chip_vertical_padding)
-    val selectedDescription = androidx.compose.ui.res.stringResource(id = R.string.quick_log_selected_state)
-    val unselectedDescription = androidx.compose.ui.res.stringResource(id = R.string.quick_log_not_selected_state)
+    val selectedDescription = stringResource(id = R.string.quick_log_selected_state)
+    val unselectedDescription = stringResource(id = R.string.quick_log_not_selected_state)
+    val shape = RoundedCornerShape(14.dp)
 
     Box(
-        modifier = Modifier
+        modifier = modifier
+            .height(48.dp)
             .selectable(
                 selected = isSelected,
                 onClick = onClick,
@@ -438,62 +404,141 @@ private fun DurationChip(
                 selected = isSelected
                 stateDescription = if (isSelected) selectedDescription else unselectedDescription
             }
-            .border(
-                width = 1.dp,
-                color = if (isSelected) accentColor else secondaryTextColor.copy(alpha = 0.20f),
-                shape = RoundedCornerShape(chipCornerRadius)
-            )
             .background(
-                color = if (isSelected) accentColor.copy(alpha = 0.14f) else cardColor.copy(alpha = 0.72f),
-                shape = RoundedCornerShape(chipCornerRadius)
+                color = if (isSelected) accentColor.copy(alpha = 0.16f) else cardColor,
+                shape = shape
             )
-            .padding(horizontal = chipHorizontalPadding, vertical = chipVerticalPadding)
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) accentColor else secondaryTextColor.copy(alpha = 0.20f),
+                shape = shape
+            ),
+        contentAlignment = Alignment.Center
     ) {
         Text(
-            text = androidx.compose.ui.res.stringResource(id = R.string.quick_log_duration_template, minutes),
+            text = stringResource(id = R.string.quick_log_duration_template, minutes),
             color = if (isSelected) primaryTextColor else secondaryTextColor,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+            textAlign = TextAlign.Center
         )
     }
 }
 
 @Composable
-fun SaveQuickLogButton(
+private fun QuickLogSummary(
+    activityName: String,
+    durationMinutes: Int,
+    accentColor: Color,
+    primaryTextColor: Color,
+    secondaryTextColor: Color
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = accentColor.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = accentColor.copy(alpha = 0.30f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(accentColor.copy(alpha = 0.20f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Schedule,
+                    contentDescription = null,
+                    tint = primaryTextColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(id = R.string.quick_log_summary_label),
+                    color = secondaryTextColor,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = stringResource(
+                        id = R.string.quick_log_summary_value,
+                        activityName,
+                        durationMinutes
+                    ),
+                    color = primaryTextColor,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaveQuickLogButton(
+    label: String,
     onClick: () -> Unit,
     isSaving: Boolean,
     accentColor: Color,
-    cardColor: Color
+    primaryTextColor: Color
 ) {
-    val buttonHeight = androidx.compose.ui.res.dimensionResource(id = R.dimen.quick_log_primary_button_height)
-
     Button(
         onClick = onClick,
         enabled = !isSaving,
         modifier = Modifier
             .fillMaxWidth()
-            .height(buttonHeight),
-        shape = RoundedCornerShape(12.dp),
+            .height(52.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = accentColor,
-            contentColor = cardColor
+            contentColor = primaryTextColor,
+            disabledContainerColor = accentColor.copy(alpha = 0.55f),
+            disabledContentColor = primaryTextColor.copy(alpha = 0.75f)
         )
     ) {
-        Text(
-            text = androidx.compose.ui.res.stringResource(id = R.string.quick_log_save_button),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold
-        )
+        if (isSaving) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = primaryTextColor,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Text(
+                text = label,
+                fontSize = 15.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }
 
-@Preview(showBackground = true, widthDp = 360, heightDp = 780)
+private fun quickLogActivityName(type: QuickLogType): String {
+    return when (type) {
+        QuickLogType.WALK -> "Walk"
+        QuickLogType.MOBILITY -> "Mobility"
+        QuickLogType.CUSTOM -> "Activity"
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 720)
 @Composable
 private fun QuickLogScreenPreview() {
     MaterialTheme {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(0xFFEBC0B0)
+            color = Color(0xFFF4E3D7)
         ) {
             QuickLogScreen(
                 uiState = QuickLogUiState(),
