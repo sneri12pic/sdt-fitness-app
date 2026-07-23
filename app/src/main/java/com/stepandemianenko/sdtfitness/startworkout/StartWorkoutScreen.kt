@@ -62,6 +62,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 //import com.stepandemianenko.sdtfitness.InactiveIcon
 import com.stepandemianenko.sdtfitness.R
 import com.stepandemianenko.sdtfitness.noRippleClickable
+import com.stepandemianenko.sdtfitness.ui.components.GlassBottomNav
+import com.stepandemianenko.sdtfitness.ui.components.NavTab
 import com.stepandemianenko.sdtfitness.ui.theme.HorizontalPadding
 import kotlinx.coroutines.flow.collect
 
@@ -189,7 +191,8 @@ fun StartWorkoutScreen(
         containerColor = StartWorkoutBackground,
         contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = {
-            BottomNavigationBar(
+            GlassBottomNav(
+                active = NavTab.WORKOUT,
                 onHomeClick = onHomeClick,
                 onProgressClick = onProgressClick,
                 onProfileClick = onProfileClick
@@ -1020,78 +1023,6 @@ private fun MiniPlayerBar(
     }
 }
 
-@Composable
-private fun BottomNavigationBar(
-    modifier: Modifier = Modifier,
-    onHomeClick: () -> Unit,
-    onProgressClick: () -> Unit,
-    onProfileClick: () -> Unit
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(BottomBarBg)
-                .border(width = 1.dp, color = Color(0x80D6AA98))
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            BottomNavItem(label = "Home", icon = R.drawable.home_nav_home, textColor = InactiveIcon, onClick = onHomeClick)
-            BottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout_curr, textColor = Color(0xFFBF7E65), onClick = {})
-            BottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress, textColor = InactiveIcon, onClick = onProgressClick)
-            BottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = InactiveIcon, onClick = onProfileClick)
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsBottomHeight(WindowInsets.navigationBars)
-                .background(
-                    color = BottomBarBg,
-                    shape = RoundedCornerShape(
-                        topStart = 0.dp,
-                        topEnd = 0.dp,
-                        bottomStart = StartWorkoutDimens.BottomInsetCorner,
-                        bottomEnd = StartWorkoutDimens.BottomInsetCorner
-                    )
-                )
-        )
-    }
-}
-
-@Composable
-private fun BottomNavItem(
-    label: String,
-    icon: Int,
-    textColor: Color,
-    iconWidth: Dp = 24.dp,
-    iconHeight: Dp = 24.dp,
-    iconContentScale: ContentScale = ContentScale.Fit,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .noRippleClickable(onClick)
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Image(
-            painter = painterResource(id = icon),
-            contentDescription = label,
-            modifier = Modifier
-                .width(iconWidth)
-                .height(iconHeight),
-            contentScale = iconContentScale
-        )
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = StartWorkoutDimens.BottomNavTextSize,
-            lineHeight = StartWorkoutDimens.BottomNavLineHeight
-        )
-    }
-}
 
 
 @Preview(showBackground = true, widthDp = 402, heightDp = 868)

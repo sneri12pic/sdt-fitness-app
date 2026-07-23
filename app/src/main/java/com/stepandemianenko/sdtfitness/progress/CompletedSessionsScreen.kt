@@ -43,6 +43,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.R
 import com.stepandemianenko.sdtfitness.noRippleClickable
+import com.stepandemianenko.sdtfitness.ui.components.GlassBottomNav
+import com.stepandemianenko.sdtfitness.ui.components.NavTab
 
 private val ProgressBackground = Color(0xFFEBC0B0)
 private val ProgressCardBackground = Color(0xFFF5E5DA)
@@ -93,10 +95,10 @@ fun CompletedSessionsScreen(
         modifier = Modifier.fillMaxSize(),
         containerColor = ProgressBackground,
         bottomBar = {
-            CompletedSessionsBottomNavigationBar(
+            GlassBottomNav(
+                active = NavTab.PROGRESS,
                 onHomeClick = onHomeClick,
                 onWorkoutClick = onWorkoutClick,
-                onProgressClick = onProgressClick,
                 onProfileClick = onProfileClick
             )
         }
@@ -255,99 +257,6 @@ private fun ListSectionLabel(
                 lineHeight = 14.sp
             )
         }
-    }
-}
-
-@Composable
-private fun CompletedSessionsBottomNavigationBar(
-    onHomeClick: () -> Unit,
-    onWorkoutClick: () -> Unit,
-    onProgressClick: () -> Unit,
-    onProfileClick: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(ProgressBottomBarBg)
-                .border(width = 1.dp, color = Color(0x80D6AA98))
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            CompletedSessionsBottomNavItem(
-                label = "Home",
-                icon = R.drawable.home_nav_home,
-                textColor = ProgressInactiveIcon,
-                onClick = onHomeClick
-            )
-            CompletedSessionsBottomNavItem(
-                label = "Workout",
-                icon = R.drawable.home_nav_workout,
-                textColor = ProgressInactiveIcon,
-                onClick = onWorkoutClick
-            )
-            CompletedSessionsBottomNavItem(
-                label = "Progress",
-                icon = R.drawable.home_nav_progress_curr,
-                textColor = Color(0xFFBF7E65),
-                onClick = onProgressClick
-            )
-            CompletedSessionsBottomNavItem(
-                label = "Profile",
-                icon = R.drawable.home_nav_profile,
-                textColor = ProgressInactiveIcon,
-                onClick = onProfileClick
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsBottomHeight(WindowInsets.navigationBars)
-                .background(
-                    color = ProgressBottomBarBg,
-                    shape = RoundedCornerShape(
-                        topStart = 0.dp,
-                        topEnd = 0.dp,
-                        bottomStart = ProgressBottomInsetCorner,
-                        bottomEnd = ProgressBottomInsetCorner
-                    )
-                )
-        )
-    }
-}
-
-@Composable
-private fun CompletedSessionsBottomNavItem(
-    label: String,
-    icon: Int,
-    textColor: Color,
-    iconWidth: Dp = 24.dp,
-    iconHeight: Dp = 24.dp,
-    iconContentScale: ContentScale = ContentScale.Fit,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .noRippleClickable(onClick)
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        androidx.compose.foundation.Image(
-            painter = painterResource(id = icon),
-            contentDescription = label,
-            modifier = Modifier
-                .width(iconWidth)
-                .height(iconHeight),
-            contentScale = iconContentScale
-        )
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = 13.sp,
-            lineHeight = 10.sp
-        )
     }
 }
 

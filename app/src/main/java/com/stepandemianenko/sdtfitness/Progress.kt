@@ -70,6 +70,8 @@ import com.stepandemianenko.sdtfitness.progress.ExerciseSetMetricChart
 import com.stepandemianenko.sdtfitness.progress.ProgressUiState
 import com.stepandemianenko.sdtfitness.progress.ProgressViewModel
 import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
+import com.stepandemianenko.sdtfitness.ui.components.GlassBottomNav
+import com.stepandemianenko.sdtfitness.ui.components.NavTab
 import com.stepandemianenko.sdtfitness.ui.components.loading.DelayedLoadingOverlay
 import com.stepandemianenko.sdtfitness.ui.components.loading.FitnessLoadingLogo
 import kotlinx.coroutines.launch
@@ -280,7 +282,8 @@ fun ProgressScreen(
                             }
                         }
 
-                        ProgressBottomNavigationBar(
+                        GlassBottomNav(
+                            active = NavTab.PROGRESS,
                             modifier = Modifier.align(Alignment.BottomCenter),
                             onHomeClick = onHomeClick,
                             onWorkoutClick = onWorkoutClick,
@@ -987,78 +990,6 @@ private fun BadgeChip(text: String) {
     }
 }
 
-@Composable
-private fun ProgressBottomNavigationBar(
-    modifier: Modifier = Modifier,
-    onHomeClick: () -> Unit,
-    onWorkoutClick: () -> Unit,
-    onProfileClick: () -> Unit
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(ProgressBottomBarBg)
-                .border(width = 1.dp, color = Color(0x80D6AA98))
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            ProgressBottomNavItem(label = "Home", icon = R.drawable.home_nav_home, textColor = ProgressInactiveIcon, onClick = onHomeClick)
-            ProgressBottomNavItem(label = "Workout", icon = R.drawable.home_nav_workout, textColor = ProgressInactiveIcon, onClick = onWorkoutClick)
-            ProgressBottomNavItem(label = "Progress", icon = R.drawable.home_nav_progress_curr, textColor = Color(0xFFBF7E65), onClick = {})
-            ProgressBottomNavItem(label = "Profile", icon = R.drawable.home_nav_profile, textColor = ProgressInactiveIcon, onClick = onProfileClick)
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsBottomHeight(WindowInsets.navigationBars)
-                .background(
-                    color = ProgressBottomBarBg,
-                    shape = RoundedCornerShape(
-                        topStart = 0.dp,
-                        topEnd = 0.dp,
-                        bottomStart = ProgressBottomInsetCorner,
-                        bottomEnd = ProgressBottomInsetCorner
-                    )
-                )
-        )
-    }
-}
-
-@Composable
-private fun ProgressBottomNavItem(
-    label: String,
-    icon: Int,
-    textColor: Color,
-    iconWidth: Dp = 24.dp,
-    iconHeight: Dp = 24.dp,
-    iconContentScale: ContentScale = ContentScale.Fit,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .noRippleClickable(onClick)
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Image(
-            painter = painterResource(id = icon),
-            contentDescription = label,
-            modifier = Modifier
-                .width(iconWidth)
-                .height(iconHeight),
-            contentScale = iconContentScale
-        )
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = 13.sp,
-            lineHeight = 10.sp
-        )
-    }
-}
 
 @Preview(showBackground = true, widthDp = 402, heightDp = 868)
 @Composable

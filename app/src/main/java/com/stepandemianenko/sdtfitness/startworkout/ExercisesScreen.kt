@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.sp
 import com.stepandemianenko.sdtfitness.ui.theme.HorizontalPadding
 import com.stepandemianenko.sdtfitness.R
 import com.stepandemianenko.sdtfitness.noRippleClickable
+import com.stepandemianenko.sdtfitness.ui.components.GlassBottomNav
+import com.stepandemianenko.sdtfitness.ui.components.NavTab
 
 private val ExercisesBackground = Color(0xFFF3C8B9)
 private val ExercisesCardBackground = Color(0xFFF8E3D8)
@@ -150,7 +152,8 @@ fun ExercisesScreen(
         containerColor = ExercisesBackground,
         contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = {
-            ExercisesBottomNavigationBar(
+            GlassBottomNav(
+                active = NavTab.WORKOUT,
                 onHomeClick = onHomeClick,
                 onProgressClick = onProgressClick,
                 onProfileClick = onProfileClick
@@ -833,90 +836,6 @@ private fun ExerciseListRow(
     }
 }
 
-@Composable
-private fun ExercisesBottomNavigationBar(
-    modifier: Modifier = Modifier,
-    onHomeClick: () -> Unit,
-    onProgressClick: () -> Unit,
-    onProfileClick: () -> Unit
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(ExercisesNavBg)
-                .border(width = 1.dp, color = Color(0x80D6AA98))
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            ExercisesBottomNavItem(
-                label = "Home",
-                icon = R.drawable.home_nav_home,
-                textColor = ExercisesInactiveIcon,
-                onClick = onHomeClick
-            )
-            ExercisesBottomNavItem(
-                label = "Workout",
-                icon = R.drawable.home_nav_workout_curr,
-                textColor = Color(0xFFBF7E65),
-                onClick = {}
-            )
-            ExercisesBottomNavItem(
-                label = "Progress",
-                icon = R.drawable.home_nav_progress,
-                textColor = ExercisesInactiveIcon,
-                onClick = onProgressClick
-            )
-            ExercisesBottomNavItem(
-                label = "Profile",
-                icon = R.drawable.home_nav_profile,
-                textColor = ExercisesInactiveIcon,
-                onClick = onProfileClick
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsBottomHeight(WindowInsets.navigationBars)
-                .background(ExercisesNavBg)
-        )
-    }
-}
-
-@Composable
-private fun ExercisesBottomNavItem(
-    label: String,
-    icon: Int,
-    textColor: Color,
-    iconWidth: Dp = 24.dp,
-    iconHeight: Dp = 24.dp,
-    iconContentScale: ContentScale = ContentScale.Fit,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .noRippleClickable(onClick)
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Image(
-            painter = painterResource(id = icon),
-            contentDescription = label,
-            modifier = Modifier
-                .width(iconWidth)
-                .height(iconHeight),
-            contentScale = iconContentScale
-        )
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = StartWorkoutDimens.BottomNavTextSize,
-            lineHeight = StartWorkoutDimens.BottomNavLineHeight
-        )
-    }
-}
 
 @Preview(showBackground = true, widthDp = 402, heightDp = 868)
 @Composable
