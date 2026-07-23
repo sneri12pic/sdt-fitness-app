@@ -1,5 +1,7 @@
 # SDT Fitness Login Architecture and Screen Overview
 
+Design-system source of truth: [[docs/design-system/Design System Hub|SDT Fitness Design System]]. This note remains authoritative for authentication behavior; shared visual decisions belong in the design-system branch.
+
 This document describes the current login architecture and login screen design in the SDTFitnessApp Android project. It is written so a future developer or ChatGPT session can quickly understand what exists, why it was built this way, and what design choices should be preserved or improved next.
 
 ## Purpose of the Login Work

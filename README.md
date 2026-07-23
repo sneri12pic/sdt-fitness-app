@@ -4,6 +4,8 @@ SDT Fitness App is a Kotlin Android workout tracker built with Jetpack Compose. 
 
 The app is organized around daily consistency: plan a routine, start a session, add exercises, log sets, track steps and weight through Health Connect, review completed workouts, and follow progress over time.
 
+Persistent UI decisions and redesign briefs are documented in the [SDT Fitness Design System](docs/design-system/Design%20System%20Hub.md). The notes use Obsidian wiki-links but remain readable as ordinary Markdown.
+
 ## Current App Surface
 
 - Home dashboard with today's plan, routine calendar, daily quest progress, quick activity logging, rest day logging, and Health Connect step imports.
