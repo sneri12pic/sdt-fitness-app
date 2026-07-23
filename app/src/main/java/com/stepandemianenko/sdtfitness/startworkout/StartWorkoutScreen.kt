@@ -62,6 +62,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 //import com.stepandemianenko.sdtfitness.InactiveIcon
 import com.stepandemianenko.sdtfitness.R
 import com.stepandemianenko.sdtfitness.noRippleClickable
+import com.stepandemianenko.sdtfitness.ui.theme.HorizontalPadding
 import kotlinx.coroutines.flow.collect
 
 private val StartWorkoutBackground = Color(0xFFEBC0B0)
@@ -203,7 +204,7 @@ fun StartWorkoutScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = StartWorkoutDimens.HorizontalPadding)
+                .padding(horizontal = HorizontalPadding)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
         )
     }

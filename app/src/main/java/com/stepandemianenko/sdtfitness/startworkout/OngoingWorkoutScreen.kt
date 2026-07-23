@@ -92,13 +92,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.R
 import com.stepandemianenko.sdtfitness.noRippleClickable
+import com.stepandemianenko.sdtfitness.ui.theme.HorizontalPadding as AppHorizontalPadding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private object LogWorkoutDimens {
-    val HorizontalPadding = StartWorkoutDimens.HorizontalPadding
+    val HorizontalPadding = AppHorizontalPadding
     val HeaderTopPadding = StartWorkoutDimens.HeaderTopPadding
     val TopPadding = 16.dp
     val BottomPadding = 16.dp

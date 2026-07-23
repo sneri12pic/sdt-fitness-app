@@ -123,6 +123,7 @@ import com.stepandemianenko.sdtfitness.home.WeightInQuestState
 import com.stepandemianenko.sdtfitness.progress.ExerciseSetMetricChart
 import com.stepandemianenko.sdtfitness.progress.SetMetricChartUiModel
 import com.stepandemianenko.sdtfitness.quicklog.QuickLogRoute
+import com.stepandemianenko.sdtfitness.ui.theme.ReservedBottomFraction
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.Instant
@@ -132,10 +133,6 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
-//import com.example.fitnessapp.ExerciseActivity
-//import com.example.fitnessapp.ProfileActivity
-
-//import com.example.fitnessapp.SettingsActivity
 
 class Home : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -184,6 +181,7 @@ class Home : ComponentActivity() {
     }
 }
 
+// ------------------------------------------------ Colours
 private val AppBackground = Color(0xFFEBC0B0)
 private val CardBackground = Color(0xFFF4E3D7)
 private val ActionColor = Color(0xFFF08A67)
@@ -195,8 +193,13 @@ private val ProgressTrack = Color(0xFFE6B8A5)
 private val BottomBarBg = Color(0xFFF5E5DA)
 private val InactiveIcon = Color(0xFFC48778)
 private val StreakHighlight = Color(0x80F88863)
+
+// Translucent aqua so the measurement lines and face read through the water.
+private val WaterFill = Color(0x9952C5E8)
+private val WaterFillTop = Color(0xCC3FB6DE)
+// ------------------------------------------------
+
 private val HomeContentMaxWidth = 360.dp
-private const val HomeReservedBottomFraction = 0.15f
 private val HomeHorizontalPadding = 20.dp
 private val HomeTopPadding = 30.dp
 private val HomeBottomInsetCorner = 16.dp
@@ -204,10 +207,6 @@ private val CalendarMonthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Lo
 private val QuestLogTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 private val CreatineDeleteRevealWidth = 72.dp
 private val CreatinePortionRowShape = RoundedCornerShape(12.dp)
-
-// Translucent aqua so the measurement lines and face read through the water.
-private val WaterFill = Color(0x9952C5E8)
-private val WaterFillTop = Color(0xCC3FB6DE)
 
 private enum class HomeScreen {
     Dashboard,
@@ -350,7 +349,7 @@ fun HomeOneScreen(
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             // Keep scroll content clear of the fixed bottom bar + system nav area.
-            val reservedBottomHeight = maxHeight * HomeReservedBottomFraction
+            val reservedBottomHeight = maxHeight * ReservedBottomFraction
             var activeScreen by rememberSaveable { mutableStateOf(HomeScreen.Dashboard) }
 
             BackHandler(enabled = activeScreen != HomeScreen.Dashboard) {

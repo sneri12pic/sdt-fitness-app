@@ -4,7 +4,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object StartWorkoutDimens {
-    val HorizontalPadding = 22.dp
     val HeaderTopPadding = 20.dp
     val ContentBottomPadding = 16.dp
     val CardCorner = 14.dp

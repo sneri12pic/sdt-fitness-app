@@ -46,6 +46,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stepandemianenko.sdtfitness.R
 import com.stepandemianenko.sdtfitness.home.QuickLogType
 
+import com.stepandemianenko.sdtfitness.ui.theme.*
+
+private val QuickLogTopPadding = 0.dp
+private val QuickLogBottomPadding = 0.dp
+
 @Composable
 fun QuickLogRoute(
     onBackClick: () -> Unit,
