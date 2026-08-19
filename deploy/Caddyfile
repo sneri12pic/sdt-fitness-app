@@ -1,0 +1,13 @@
+{
+    email {$TLS_EMAIL}
+}
+
+{$AUTH_DOMAIN} {
+    encode zstd gzip
+
+    header {
+        -Server
+    }
+
+    reverse_proxy auth-api:8080
+}

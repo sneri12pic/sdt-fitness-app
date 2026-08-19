@@ -3,6 +3,7 @@ package com.stepandemianenko.sdtfitness.authapi.rate
 import com.stepandemianenko.sdtfitness.authapi.domain.RateLimitException
 import java.time.Clock
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 class FixedWindowRateLimiter(
     private val maxRequests: Int,
@@ -10,9 +11,13 @@ class FixedWindowRateLimiter(
     private val clock: Clock = Clock.systemUTC()
 ) {
     private val buckets = ConcurrentHashMap<String, Bucket>()
+    private val requestCount = AtomicInteger()
 
     fun requireAllowed(key: String) {
         val now = clock.millis()
+        if (requestCount.incrementAndGet() % CLEANUP_INTERVAL == 0) {
+            buckets.entries.removeIf { (_, bucket) -> now >= bucket.resetAtMillis }
+        }
         val allowed = buckets.compute(key) { _, current ->
             if (current == null || now >= current.resetAtMillis) {
                 Bucket(count = 1, resetAtMillis = now + windowMillis)
@@ -30,4 +35,8 @@ class FixedWindowRateLimiter(
         val count: Int,
         val resetAtMillis: Long
     )
+
+    private companion object {
+        const val CLEANUP_INTERVAL = 1_024
+    }
 }

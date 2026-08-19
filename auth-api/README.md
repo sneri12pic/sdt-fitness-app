@@ -33,14 +33,22 @@ Local defaults use an H2 database under `build/auth-api`. Production should set:
 
 ```text
 AUTH_ENVIRONMENT=production
+AUTH_HOST=0.0.0.0
 AUTH_DATABASE_URL=jdbc:postgresql://host:5432/sdt_fitness_auth
 AUTH_DATABASE_USER=sdt_auth
 AUTH_DATABASE_PASSWORD=change-me
 AUTH_JWT_SECRET=replace-with-at-least-32-random-characters
 AUTH_REFRESH_TOKEN_PEPPER=replace-with-a-different-32-char-secret
 AUTH_ALLOWED_ORIGINS=https://your-domain.example
+AUTH_TRUST_PROXY_HEADERS=true
 PORT=8080
 ```
+
+Production configuration fails fast unless the database is PostgreSQL and all database/token secrets are present. Keep `AUTH_TRUST_PROXY_HEADERS=true` only when the API is reachable exclusively through a trusted reverse proxy, as it is in the Compose deployment under `deploy/`.
+
+## Deploy
+
+The production Docker Compose stack, automatic HTTPS proxy, environment template, and server runbook are in [`deploy/`](../deploy/README.md).
 
 Optional:
 
@@ -72,7 +80,7 @@ Expected response:
 {"status":"ok"}
 ```
 
-For Android emulator or device testing against your machine, expose the API through HTTPS. The Android client rejects non-HTTPS auth URLs. For local development you can use a tunnel such as Cloudflare Tunnel, ngrok, or another HTTPS reverse proxy.
+For Android emulator or device testing against your machine, HTTPS is preferred. Debug builds may use an explicitly allow-listed LAN HTTP host from `network_security_config.xml`; release builds always reject non-HTTPS auth URLs. You can use a tunnel such as Cloudflare Tunnel, ngrok, or another HTTPS reverse proxy.
 
 ### Android local development with Cloudflare Tunnel
 

@@ -15,3 +15,10 @@
 .externalNativeBuild
 .cxx
 local.properties
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.jks
+*.keystore
+deploy/LOCAL_DEPLOYMENT.md

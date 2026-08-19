@@ -77,7 +77,10 @@ object AppGraph {
     fun authRepository(context: Context): AuthRepository {
         return authRepository ?: synchronized(this) {
             authRepository ?: AuthRepositoryImpl(
-                remoteAuthDataSource = HttpRemoteAuthDataSource(BuildConfig.AUTH_BASE_URL),
+                remoteAuthDataSource = HttpRemoteAuthDataSource(
+                    baseUrl = BuildConfig.AUTH_BASE_URL,
+                    allowCleartext = BuildConfig.DEBUG
+                ),
                 secureSessionStore = SecureSessionStore(context.applicationContext),
                 accountSessionManager = accountSessionManager(context)
             ).also { authRepository = it }

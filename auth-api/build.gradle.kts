@@ -22,6 +22,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.hikari)
     implementation(libs.flyway.core)
+    implementation(libs.flyway.database.postgresql)
     implementation(libs.postgres)
     implementation(libs.h2)
     implementation(libs.bcrypt)

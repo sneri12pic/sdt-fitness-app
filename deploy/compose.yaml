@@ -1,0 +1,90 @@
+name: sdt-fitness-auth
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sdt_fitness_auth}
+      POSTGRES_USER: ${POSTGRES_USER:-sdt_auth}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+
+  auth-api:
+    build:
+      context: ..
+      dockerfile: auth-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      AUTH_ENVIRONMENT: production
+      AUTH_HOST: 0.0.0.0
+      PORT: 8080
+      AUTH_DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-sdt_fitness_auth}
+      AUTH_DATABASE_USER: ${POSTGRES_USER:-sdt_auth}
+      AUTH_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in deploy/.env}
+      AUTH_REFRESH_TOKEN_PEPPER: ${AUTH_REFRESH_TOKEN_PEPPER:?Set AUTH_REFRESH_TOKEN_PEPPER in deploy/.env}
+      AUTH_TRUST_PROXY_HEADERS: "true"
+      AUTH_BCRYPT_COST: ${AUTH_BCRYPT_COST:-12}
+      AUTH_RATE_LIMIT_MAX_REQUESTS: ${AUTH_RATE_LIMIT_MAX_REQUESTS:-20}
+      AUTH_RATE_LIMIT_WINDOW_MILLIS: ${AUTH_RATE_LIMIT_WINDOW_MILLIS:-60000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --header='X-Forwarded-Proto: https' -O - http://127.0.0.1:8080/health | grep -q '\"status\":\"ok\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      AUTH_DOMAIN: ${AUTH_DOMAIN:?Set AUTH_DOMAIN in deploy/.env}
+      TLS_EMAIL: ${TLS_EMAIL:?Set TLS_EMAIL in deploy/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      auth-api:
+        condition: service_healthy
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:
