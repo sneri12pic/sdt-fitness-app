@@ -1,0 +1,13 @@
+.git
+.github
+.gradle
+.gradle-user-home
+.idea
+.claude
+**/build
+**/.env
+*.jks
+*.keystore
+local.properties
+docs
+captures

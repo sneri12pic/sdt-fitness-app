@@ -107,7 +107,10 @@ class AppContainer(context: Context) {
 
     val authRepository: AuthRepository by lazy {
         AuthRepositoryImpl(
-            remoteAuthDataSource = HttpRemoteAuthDataSource(BuildConfig.AUTH_BASE_URL),
+            remoteAuthDataSource = HttpRemoteAuthDataSource(
+                baseUrl = BuildConfig.AUTH_BASE_URL,
+                allowCleartext = BuildConfig.DEBUG
+            ),
             secureSessionStore = SecureSessionStore(appContext),
             accountSessionManager = accountSessionManager
         )

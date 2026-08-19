@@ -63,6 +63,7 @@ ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-conte
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 hikari = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikari" }
 flyway-core = { group = "org.flywaydb", name = "flyway-core", version.ref = "flyway" }
+flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-postgresql", version.ref = "flyway" }
 postgres = { group = "org.postgresql", name = "postgresql", version.ref = "postgres" }
 h2 = { group = "com.h2database", name = "h2", version.ref = "h2" }
 bcrypt = { group = "at.favre.lib", name = "bcrypt", version.ref = "bcrypt" }

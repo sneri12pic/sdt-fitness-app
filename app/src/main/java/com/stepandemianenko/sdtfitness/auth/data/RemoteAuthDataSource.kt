@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 
 data class RemoteAuthResponse(
@@ -33,7 +34,8 @@ interface RemoteAuthDataSource {
 }
 
 class HttpRemoteAuthDataSource(
-    private val baseUrl: String
+    private val baseUrl: String,
+    private val allowCleartext: Boolean = false
 ) : RemoteAuthDataSource {
 
     override suspend fun signInWithEmail(email: String, password: String): RemoteAuthResponse {
@@ -70,7 +72,14 @@ class HttpRemoteAuthDataSource(
 
     private suspend fun postJson(path: String, body: JSONObject): RemoteAuthResponse = withContext(Dispatchers.IO) {
         val trimmedBaseUrl = baseUrl.trim().trimEnd('/')
-        if (trimmedBaseUrl.isBlank() || !trimmedBaseUrl.startsWith("https://")) {
+        val baseUri = runCatching { URI(trimmedBaseUrl) }.getOrNull()
+        val scheme = baseUri?.scheme?.lowercase()
+        val allowedScheme = scheme == "https" || (allowCleartext && scheme == "http")
+        if (trimmedBaseUrl.isBlank() ||
+            baseUri?.host.isNullOrBlank() ||
+            baseUri?.userInfo != null ||
+            !allowedScheme
+        ) {
             throw RemoteAuthException.ServiceUnavailable
         }
 

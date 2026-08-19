@@ -38,6 +38,7 @@ fun main() {
     val config = AuthConfig.fromEnvironment()
     embeddedServer(
         factory = Netty,
+        host = config.host,
         port = config.port,
         module = { authApiModule(config) }
     ).start(wait = true)
@@ -111,7 +112,8 @@ fun Application.authApiModule(config: AuthConfig = AuthConfig.fromEnvironment())
         }
         authRoutes(
             authService = authService,
-            rateLimiter = rateLimiter
+            rateLimiter = rateLimiter,
+            trustProxyHeaders = config.trustProxyHeaders
         )
     }
 }

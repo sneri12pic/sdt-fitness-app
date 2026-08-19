@@ -14,6 +14,7 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import java.util.UUID
+import kotlinx.coroutines.delay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -107,10 +108,11 @@ class AuthApiTest {
 
     @Test
     fun `expired refresh token returns unauthorized`() = testApplication {
-        application { authApiModule(testConfig(refreshTtlMillis = -1L)) }
+        application { authApiModule(testConfig(refreshTtlMillis = 1L)) }
         val client = jsonClient()
         val registered = client.register(EmailPasswordRequest("expired@example.com", "password123"))
             .body<AuthResponse>()
+        delay(10)
 
         val response = client.post("/auth/refresh") {
             contentType(ContentType.Application.Json)
@@ -122,6 +124,7 @@ class AuthApiTest {
 
     private fun testConfig(refreshTtlMillis: Long = 30L * 24L * 60L * 60L * 1000L): AuthConfig {
         return AuthConfig(
+            host = "127.0.0.1",
             port = 0,
             databaseUrl = "jdbc:h2:mem:${UUID.randomUUID()};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
             databaseUser = "sa",
@@ -136,6 +139,7 @@ class AuthApiTest {
             rateLimitMaxRequests = 100,
             rateLimitWindowMillis = 60_000L,
             allowedOrigins = emptyList(),
+            trustProxyHeaders = false,
             environment = "test"
         )
     }
