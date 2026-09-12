@@ -174,3 +174,7 @@ Local API defaults use H2 under `auth-api/build`. Production-style runs should p
 - Android minimum SDK: 28.
 - Keep auth API field names aligned with `RemoteAuthDataSource`; the Android client expects the current response contract exactly.
 - Keep Room schemas committed when database entities or migrations change.
+
+
+## Research
+[Balancing Hedonic and Utilitarian Design in Fitness Applications A Self-Determination Theory-Informed Prototype Study.pdf](https://github.com/user-attachments/files/32147100/Balancing.Hedonic.and.Utilitarian.Design.in.Fitness.Applications.A.Self-Determination.Theory-Informed.Prototype.Study.pdf)
